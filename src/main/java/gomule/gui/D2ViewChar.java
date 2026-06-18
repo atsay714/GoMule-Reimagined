@@ -512,7 +512,7 @@ public class D2ViewChar extends JInternalFrame implements D2ItemContainer, D2Ite
         String lText = "Character disconnected";
 
         if (pEx != null) {
-            lText += "\n";
+            lText += ": " + pEx + "\n";
             StackTraceElement trace[] = pEx.getStackTrace();
             for (int i = 0; i < trace.length; i++) {
                 lText += "\tat " + trace[i] + "\n";
