@@ -290,6 +290,24 @@ public class D2BodyLocations {
                 iSkillLocs[28] = new Point(173, 307);
                 iSkillLocs[29] = new Point(112, 370);
                 break;
+            default:
+                // No hand-tuned layout exists for this class (e.g. a class added by a mod
+                // after this was written). Lay out all 30 possible skill slots on an even
+                // 3-column grid spanning the same area the hand-tuned layouts use, so the
+                // skill panel is usable instead of crashing or showing nothing.
+                int lGridCols = 3;
+                int lGridLeft = 50;
+                int lGridTop = 64;
+                int lGridColSpacing = 62;
+                int lGridRowSpacing = 61;
+                for (int lSlot = 0; lSlot < iSkillLocs.length; lSlot++) {
+                    int lRow = lSlot / lGridCols;
+                    int lCol = lSlot % lGridCols;
+                    iSkillLocs[lSlot] = new Point(
+                            lGridLeft + lCol * lGridColSpacing,
+                            lGridTop + lRow * lGridRowSpacing);
+                }
+                break;
         }
         return iSkillLocs;
     }

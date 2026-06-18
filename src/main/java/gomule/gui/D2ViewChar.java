@@ -2134,6 +2134,19 @@ public class D2ViewChar extends JInternalFrame implements D2ItemContainer, D2Ite
 //				cClass = "ass";
                     break;
 
+                default:
+                    // No hand-tuned background art exists for this class (e.g. a class
+                    // added by a mod after this was written). Use a plain placeholder
+                    // sized to match the hand-painted backgrounds (284x383) instead of
+                    // leaving lEmptyBackground null, which would NPE on the next line.
+                    java.awt.image.BufferedImage lPlaceholder =
+                            new java.awt.image.BufferedImage(284, 383, java.awt.image.BufferedImage.TYPE_INT_RGB);
+                    Graphics2D lPlaceholderGraphics = lPlaceholder.createGraphics();
+                    lPlaceholderGraphics.setColor(java.awt.Color.DARK_GRAY);
+                    lPlaceholderGraphics.fillRect(0, 0, 284, 383);
+                    lPlaceholderGraphics.dispose();
+                    lEmptyBackground = lPlaceholder;
+                    break;
 
             }
 
