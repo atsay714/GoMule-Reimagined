@@ -1,6 +1,10 @@
 package gomule.d2s;
 
+import com.google.common.io.Resources;
 import org.junit.jupiter.api.Test;
+import randall.d2files.D2TxtFile;
+
+import java.io.File;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -20,6 +24,25 @@ public class D2CharacterTest {
 //        D2Character d2Character = new D2Character(new File(Resources.getResource("charFiles/complexChar.d2s").toURI()).getAbsolutePath());
 //        assertEquals(expectedComplexChar, d2Character.fullDumpStr().replaceAll("\r", ""));
 //    }
+
+    // A real, current D2R (version 105) character a user shared while debugging GoMule against
+    // their actual game install. This is what found and validated the .d2s header offset fix
+    // (D2Character.readChar()'s comments) and the item-format version fix
+    // (D2Item.setFormatVersion()'s comment) -- every field asserted here was cross-checked
+    // against either the file's own contents (name) or real game data (class/level from the
+    // header; each item's name/durability against its base stats in armor.txt, including the
+    // ethereal-halves-durability mechanic for the two ethereal uniques).
+    @Test
+    public void realVersion105CharacterWithCurrentItemFormatParsesCorrectly() throws Exception {
+        D2TxtFile.constructTxtFiles("./d2111");
+        D2Character d2Character = new D2Character(
+                new File(Resources.getResource("charFiles/barb_gear.d2s").toURI()).getAbsolutePath());
+
+        assertEquals("barb_gear", d2Character.getCharName());
+        assertEquals("Barbarian", d2Character.getCharClass());
+        assertEquals(1, d2Character.getCharLevel());
+        assertEquals(11, d2Character.getItemList().size());
+    }
 
     @Test
     public void classByteToAbbreviationHandlesAllEightClasses() {

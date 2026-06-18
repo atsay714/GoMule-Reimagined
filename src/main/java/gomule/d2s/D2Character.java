@@ -151,6 +151,10 @@ public class D2Character extends D2ItemListAdapter {
         // happened on a real D2R install reporting version 105. Reject only the genuinely
         // older/incompatible classic formats; accept 99 and anything newer.
         if (lVersion < 99) throw new Exception("Incorrect Character version: " + lVersion);
+        // Items embedded in this character (equipment, inventory, cube, stash, merc gear) use a
+        // format that itself depends on this same version -- see D2Item.setFormatVersion()'s
+        // comment for what changed and what's still unconfirmed.
+        D2Item.setFormatVersion(lVersion);
         iReader.set_byte_pos(8);
         long lSize = iReader.read(32);
         if (iReader.get_length() != lSize) throw new Exception("Incorrect FileSize: " + lSize);

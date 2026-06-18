@@ -30,8 +30,12 @@ public class D2SharedStashReader {
     private D2SharedStashPane readSharedStashPane(D2BitReader bitReader, String filename) throws Exception {
         int stashPaneStart = bitReader.get_byte_pos();
         D2SharedStash.Header header = D2SharedStash.Header.fromBytes(bitReader);
-        if (header.getVersion() != 99)
+        // Same version drift as the .d2s character format (see D2Character.readChar() and
+        // D2Item.setFormatVersion()): the header layout itself hasn't changed, but a strict
+        // equality check rejects every later D2R patch. Accept 99 and anything newer.
+        if (header.getVersion() < 99)
             throw new RuntimeException("Incorrect shared stash version: " + header.getVersion());
+        D2Item.setFormatVersion(header.getVersion());
         bitReader.set_byte_pos(bitReader.findNextFlag("JM", bitReader.get_byte_pos()));
         bitReader.skipBytes(2);
         int numItems = (int) bitReader.read(16);

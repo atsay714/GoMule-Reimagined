@@ -35,6 +35,11 @@ public class D2SharedStashWriterTest {
     @BeforeEach
     public void setup() {
         D2TxtFile.constructTxtFiles("./d2111");
+        // This test's fixture bytes (HEALTH_POT, SMALL_CHARM, EMPTY_STASH, etc.) are all
+        // pre-version-100 format -- see D2ItemTest's resetItemFormatVersion() and
+        // D2Item.setFormatVersion()'s comment. loadItem() constructs D2Item directly with no
+        // version-setting caller in between, so this must be set explicitly per-test.
+        D2Item.setFormatVersion(99);
     }
 
     @Test

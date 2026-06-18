@@ -153,6 +153,24 @@ public class D2Item implements Comparable, D2ItemInterface {
 
     private final HuffmanLookupTable huffmanLookupTable = HuffmanLookupTable.withStandardDictionary();
 
+    // The .d2s/.d2i item-format gained an extra bit before the magical property list (and
+    // ethereal items, one more after it) at some D2R patch after version 99 -- confirmed present
+    // at version 105, confirmed ABSENT at version 99 (an older real shared-stash file broke when
+    // this was applied unconditionally). The exact version it was introduced at, between 100 and
+    // 104, is unknown -- no sample files or public docs exist for those. Callers that know their
+    // source file's version (D2Character, D2SharedStashReader) should call setFormatVersion(...)
+    // before constructing any D2Item from it. Defaults to the old/legacy behavior so any caller
+    // that doesn't set this explicitly behaves exactly as this code always has.
+    private static long sFormatVersion = 99;
+
+    public static void setFormatVersion(long pVersion) {
+        sFormatVersion = pVersion;
+    }
+
+    private static boolean usesPostV99ItemFormat() {
+        return sFormatVersion > 99;
+    }
+
     public D2Item(String pFileName, D2BitReader pFile, long pCharLvl)
             throws Exception {
         iFileName = pFileName;
@@ -821,10 +839,34 @@ public class D2Item implements Comparable, D2ItemInterface {
             }
         }
 
+        // Current D2R (item format version drift alongside the .d2s header changes elsewhere
+        // in this fork -- version 105 confirmed -- not yet documented anywhere public, including
+        // D2CE's, whose newest documented item version is "v140"/Patch 2.5) has one extra bit
+        // here, after durability/sockets/set-flags and right before the magical property list,
+        // that doesn't exist in any prior format (confirmed: applying this unconditionally broke
+        // a known-good version-99 shared-stash file). Confirmed PRESENT against multiple real
+        // items from a real version-105 character's raw bytes (Horadric Cube, two non-ethereal
+        // uniques) by cross-checking the resulting defense/durability against their known base
+        // item stats in armor.txt -- without this skip, every one of them misreads its property
+        // list as garbage stat IDs. See setFormatVersion()'s comment for what's still unknown.
+        if (usesPostV99ItemFormat()) {
+            pFile.skipBits(1);
+        }
         if (iJewel) {
             readProperties(pFile, 1);
         } else {
             readProperties(pFile, 0);
+        }
+        // Ethereal items need one MORE bit than non-ethereal ones in the post-v99 format,
+        // positioned after the property list rather than before it. Confirmed against two real
+        // ethereal uniques (Arreat's Face, a second ethereal unique sword) -- their durability
+        // values came out exactly half their base item's durability (the well-known
+        // ethereal-halves-durability mechanic), confirming the property-list read itself was
+        // already correct for them, and every item *after* an ethereal one parsed correctly once
+        // this was added, all the way through to the file's trailing markers landing at the
+        // exact right byte.
+        if (iEthereal && usesPostV99ItemFormat()) {
+            pFile.skipBits(1);
         }
         if (quality == 5) {
             for (int x = 0; x < 5; x++) {
