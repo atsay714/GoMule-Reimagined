@@ -160,30 +160,41 @@ public class D2Character extends D2ItemListAdapter {
         if (!Arrays.equals(calculatedChecksum, checksumFromFile)) throw new Exception("Incorrect Checksum");
         iReader.set_byte_pos(16);
 //		long lWeaponSet = iReader.read(32);
-        iReader.set_byte_pos(267);
+        // The classic/D2R-1.4.x (version 99) header had this 16-byte field at offset 267, with
+        // a now-unused 16-byte placeholder earlier at offset 20. A current D2R install (observed
+        // version 105) removes that early placeholder (shifting everything after it 16 bytes
+        // earlier) and inserts a larger "Character Menu Appearance" block later in the header
+        // (shifting this field 32 bytes later than the old position) -- net effect: name moved
+        // from 267 to 299. Confirmed against a real save's raw bytes; everything from the quest
+        // block onward is found by searching for literal markers ("Woo!", "gf", "if", "JM", ...)
+        // so it isn't affected by this at all -- only these few fixed-offset reads are.
+        iReader.set_byte_pos(299);
         StringBuffer lCharName = new StringBuffer();
         for (int i = 0; i < 16; i++) {
             long lChar = iReader.read(8);
             if (lChar != 0) lCharName.append((char) lChar);
         }
         iCharName = lCharName.toString();
-        iReader.set_byte_pos(36);
+        iReader.set_byte_pos(20);
         iReader.skipBits(2);
         iHC = iReader.read(1) == 1;
-        iReader.set_byte_pos(37);
+        iReader.set_byte_pos(21);
 //		long lCharTitle = iReader.read(8);
         iReader.read(8);
-        iReader.set_byte_pos(40);
+        iReader.set_byte_pos(24);
         lCharCode = iReader.read(8);
         cClass = classByteToAbbreviation(lCharCode);
         if (cClass == null) throw new Exception("Invalid character class byte: " + lCharCode);
-        iReader.set_byte_pos(43);
+        iReader.set_byte_pos(27);
         iCharLevel = iReader.read(8);
         if (iCharLevel < 1 || iCharLevel > 99)
             throw new Exception("Invalid char level: " + iCharLevel + " (should be between 1-99)");
         iCharClass = D2TxtFile.getCharacterCode((int) lCharCode);
         iTitleString = " Lvl " + iCharLevel + " " + D2TxtFile.getCharacterCode((int) lCharCode);
-        iReader.set_byte_pos(177);
+        // Old offset 177, shifted 16 bytes earlier same as the class/level fields above (this
+        // block sits before the later "Character Menu Appearance" insertion, so it only inherits
+        // the earlier shift, not both).
+        iReader.set_byte_pos(161);
         if (iReader.read(8) == 1) ;//MERC IS DEAD?
         iReader.skipBits(8);
         if (iReader.read(32) != 0) {
