@@ -170,6 +170,7 @@ public class D2Character extends D2ItemListAdapter {
         iReader.set_byte_pos(40);
         lCharCode = iReader.read(8);
         cClass = classByteToAbbreviation(lCharCode);
+        if (cClass == null) throw new Exception("Invalid character class byte: " + lCharCode);
         iReader.set_byte_pos(43);
         iCharLevel = iReader.read(8);
         if (iCharLevel < 1 || iCharLevel > 99)
