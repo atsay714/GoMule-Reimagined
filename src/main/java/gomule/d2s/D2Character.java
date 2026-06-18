@@ -144,7 +144,13 @@ public class D2Character extends D2ItemListAdapter {
         iReader.set_byte_pos(4);
         long lVersion = iReader.read(32);
 //        System.err.println("Version: " + lVersion);
-        if (lVersion != 99) throw new Exception("Incorrect Character version: " + lVersion);
+        // The .d2s version field increments with every D2R patch (96 = pre-D2R, 97 = D2R
+        // 1.0-1.1, 98 = D2R 1.2-1.3, 99 = D2R 1.4+), but the header layout this class reads
+        // (class byte, level, name, stats, items, ...) hasn't changed since version 98. A
+        // hard equality check here means every subsequent D2R patch breaks this entirely, as
+        // happened on a real D2R install reporting version 105. Reject only the genuinely
+        // older/incompatible classic formats; accept 99 and anything newer.
+        if (lVersion < 99) throw new Exception("Incorrect Character version: " + lVersion);
         iReader.set_byte_pos(8);
         long lSize = iReader.read(32);
         if (iReader.get_length() != lSize) throw new Exception("Incorrect FileSize: " + lSize);
