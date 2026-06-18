@@ -169,29 +169,7 @@ public class D2Character extends D2ItemListAdapter {
         iReader.read(8);
         iReader.set_byte_pos(40);
         lCharCode = iReader.read(8);
-        switch ((int) lCharCode) {
-            case 0:
-                cClass = "ama";
-                break;
-            case 1:
-                cClass = "sor";
-                break;
-            case 2:
-                cClass = "nec";
-                break;
-            case 3:
-                cClass = "pal";
-                break;
-            case 4:
-                cClass = "bar";
-                break;
-            case 5:
-                cClass = "dru";
-                break;
-            case 6:
-                cClass = "ass";
-                break;
-        }
+        cClass = classByteToAbbreviation(lCharCode);
         iReader.set_byte_pos(43);
         iCharLevel = iReader.read(8);
         if (iCharLevel < 1 || iCharLevel > 99)
@@ -748,20 +726,22 @@ public class D2Character extends D2ItemListAdapter {
         }
     }
 
-    public int getARClassBonus() {
-        if (getCharClass().equals("Barbarian") || getCharClass().equals("Paladin")) {
-            return 20;
-        } else if (getCharClass().equals("Assasin")) {
-            return 15;
-        } else if (getCharClass().equals("Amazon") || getCharClass().equals("Druid")) {
-            return 5;
-        } else if (getCharClass().equals("Necromancer")) {
-            return -10;
-        } else if (getCharClass().equals("Sorceress")) {
-            return -15;
-        } else {
-            return 99999999;
+    static String classByteToAbbreviation(long pCharCode) {
+        switch ((int) pCharCode) {
+            case 0: return "ama";
+            case 1: return "sor";
+            case 2: return "nec";
+            case 3: return "pal";
+            case 4: return "bar";
+            case 5: return "dru";
+            case 6: return "ass";
+            case 7: return "war";
+            default: return null;
         }
+    }
+
+    public int getARClassBonus() {
+        return Integer.parseInt(D2TxtFile.CHARSTATS.searchColumns("class", getCharClass()).get("ToHitFactor"));
     }
 
     public ArrayList getItemList() {

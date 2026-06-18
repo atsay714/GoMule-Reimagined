@@ -1,12 +1,9 @@
 package gomule.d2s;
 
-import com.google.common.io.Resources;
 import org.junit.jupiter.api.Test;
-import randall.d2files.D2TxtFile;
-
-import java.io.File;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 @SuppressWarnings("UnstableApiUsage")
 public class D2CharacterTest {
@@ -927,4 +924,17 @@ public class D2CharacterTest {
             + "Shields: 25% Better Chance of Getting Magic Items\n"
             + "\n"
             + "\n";
+
+    @Test
+    public void classByteToAbbreviationHandlesAllEightClasses() {
+        assertEquals("ama", D2Character.classByteToAbbreviation(0));
+        assertEquals("sor", D2Character.classByteToAbbreviation(1));
+        assertEquals("nec", D2Character.classByteToAbbreviation(2));
+        assertEquals("pal", D2Character.classByteToAbbreviation(3));
+        assertEquals("bar", D2Character.classByteToAbbreviation(4));
+        assertEquals("dru", D2Character.classByteToAbbreviation(5));
+        assertEquals("ass", D2Character.classByteToAbbreviation(6));
+        assertEquals("war", D2Character.classByteToAbbreviation(7));
+        assertNull(D2Character.classByteToAbbreviation(8));
+    }
 }
