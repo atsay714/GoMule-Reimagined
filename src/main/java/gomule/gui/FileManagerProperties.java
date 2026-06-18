@@ -12,13 +12,17 @@ import java.util.Properties;
 public class FileManagerProperties {
     public static File getFileManagerPropertiesFile() throws IOException {
         File lProjectsDir = new File(D2Project.PROJECTS_DIR);
-        if (!lProjectsDir.exists()) {
-            lProjectsDir.mkdir();
+        if (!lProjectsDir.exists() && !lProjectsDir.mkdirs()) {
+            throw new IOException("Could not create projects directory: "
+                    + lProjectsDir.getAbsolutePath()
+                    + " (check that GoMule has write permission there)");
         }
 
         File lProps = new File(D2Project.PROJECTS_DIR + File.separator + "projects.properties");
-        if (!lProps.exists()) {
-            lProps.createNewFile();
+        if (!lProps.exists() && !lProps.createNewFile()) {
+            throw new IOException("Could not create properties file: "
+                    + lProps.getAbsolutePath()
+                    + " (check that GoMule has write permission there)");
         }
         return lProps;
     }
