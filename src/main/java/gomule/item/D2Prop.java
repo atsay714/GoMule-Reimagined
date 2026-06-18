@@ -670,7 +670,7 @@ public class D2Prop {
                 return "Martial Art Skills (Assassin Only)";
 
             case 21:
-                return "Martial Arts (Warlock Only)";
+                return "Demon Skills (Warlock Only)";
 
             case 22:
                 return "Eldritch Skills (Warlock Only)";

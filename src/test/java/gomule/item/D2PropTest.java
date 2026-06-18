@@ -14,9 +14,13 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * Data sources:
  *  - pierce-immunity-fire: uniqueitems.txt row "Flame Rift" (ID 402), value 300
- *  - noconsume: magicsuffix.txt row "of Mosaic", values 50/50
+ *  - noconsume: stat ID 205 (item_noconsume) exists only as a properties.txt
+ *    definition in the current data — no item or affix actually uses it yet.
+ *    The test value (50) is a representative value chosen to verify the rendering
+ *    path works; it is NOT derived from any real item row. This is analogous to
+ *    the affix-rand situation documented below.
  *  - war-tab-rand: properties.txt row 282, resolves item_addskill_tab with
- *    tab indices 21/22/23 (Warlock class tabs: Martial Arts, Eldritch Skills,
+ *    tab indices 21/22/23 (Warlock class tabs: Demon Skills, Eldritch Skills,
  *    Chaos Skills); also exercises known-good tabs to confirm the base path works
  *  - affix-rand: properties.txt row 280, func1=25, stat1 empty — this property
  *    generates a random affix at item creation time and stores the resulting affix
@@ -67,9 +71,11 @@ public class D2PropTest {
 
     // -------------------------------------------------------------------------
     // noconsume  (descfunc 19 path, PROPS tooltip lookup)
-    // Value 50 taken from magicsuffix.txt "of Mosaic" (charge-noconsume stat
-    // with min=50/max=50); noconsume property itself uses the same stat with
-    // the same 50/50 range (also confirmed in magicsuffix.txt row 733).
+    // stat ID 205 = item_noconsume. This stat exists only as a properties.txt
+    // definition in the current data — no item or affix references it yet.
+    // Value 50 is a representative value used to exercise the rendering path;
+    // it is NOT derived from a real item row. (Compare: affix-rand below, which
+    // is similarly untestable via generateDisplay() for different reasons.)
     // -------------------------------------------------------------------------
 
     @Test
@@ -95,7 +101,7 @@ public class D2PropTest {
     // war-tab-rand  (descfunc 14 path via item_addskill_tab, tree index lookup)
     //
     // The property randomly picks one of three item_addskill_tab stats with
-    // tab indices 21 (Martial Arts), 22 (Eldritch Skills), 23 (Chaos Skills) —
+    // tab indices 21 (Demon Skills), 22 (Eldritch Skills), 23 (Chaos Skills) —
     // these are the new Warlock class skill trees introduced by the mod.
     //
     // Known-good tree (34 = Warcry Skills, Barbarian) is tested first to confirm
@@ -116,8 +122,9 @@ public class D2PropTest {
     }
 
     @Test
-    void warTabRandMartialArtsRendersNonEmpty() {
-        // war-tab-rand tab index 21 = Martial Arts (Warlock Only)
+    void warTabRandDemonSkillsRendersNonEmpty() {
+        // war-tab-rand tab index 21 = Demon Skills (Warlock Only)
+        // charstats.txt Warlock row: StrSkillTab1=StrSklTabItem24 = "+%d to Demon Skills"
         D2Prop prop = new D2Prop(188, new int[]{21, 1, 0}, QFLAG_STANDARD);
         String rendered = prop.generateDisplay(QFLAG_STANDARD, CLVL_DONT_CARE);
 
@@ -125,8 +132,8 @@ public class D2PropTest {
         assertFalse(rendered.isEmpty(), "item_addskill_tab (tree 21) must not return empty");
         assertFalse(rendered.contains("Unknown Tree"),
                 "item_addskill_tab (tree 21) must not fall through to Unknown Tree; got: " + rendered);
-        assertTrue(rendered.contains("Martial Arts (Warlock Only)"),
-                "Expected 'Martial Arts (Warlock Only)' in rendered text for tree 21 but got: " + rendered);
+        assertTrue(rendered.contains("Demon Skills (Warlock Only)"),
+                "Expected 'Demon Skills (Warlock Only)' in rendered text for tree 21 but got: " + rendered);
     }
 
     @Test
