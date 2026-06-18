@@ -364,7 +364,7 @@ public class D2ItemTest {
                 + "Ber Rune (#30)\n"
                 + "Required Level: 63\n"
                 + "Version: Resurrected\n"
-                + "Weapons: 20% Chance of Crushing Blow\n"
+                + "Weapons: 10% Chance of Crushing Blow\n"
                 + "Armor: Damage Reduced by 8%\n"
                 + "Shields: Damage Reduced by 8%\n"
                 + "\n"
