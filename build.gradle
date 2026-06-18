@@ -5,6 +5,16 @@ plugins {
 sourceCompatibility = 1.8
 targetCompatibility = 1.8
 
+// Some source files contain non-ASCII literals (e.g. the D2 color-code marker 'ÿ' in
+// D2ItemRenderer.java and D2ImageCache.java) saved as UTF-8 bytes. Without this, javac
+// falls back to the platform default charset, which is UTF-8 on macOS/Linux but
+// Windows-1252 on Windows -- silently miscompiling those literals so the affected
+// regex/equals checks never match on Windows. Pin it explicitly so the build is
+// reproducible across platforms.
+tasks.withType(JavaCompile) {
+    options.encoding = 'UTF-8'
+}
+
 group 'org.example'
 version '1.0-SNAPSHOT'
 
