@@ -1,7 +1,7 @@
 # GoMule-Reimagined
 
 This is a fork of the popular Muling tool "GoMule" originally created by Andy Theuninck (Gohanman) and then continued by Randall and Silospen.
-It was modified to be compatible with the Diablo 2 Resurrected mod "Reimagined" (2.1.1+)
+It was modified to be compatible with the Diablo 2 Resurrected mod "Reimagined" (3.0.10+)
 
 ![image](https://github.com/user-attachments/assets/3c53b5dd-4b99-45ba-9187-572866ed9963)
 
