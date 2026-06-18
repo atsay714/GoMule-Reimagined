@@ -61,6 +61,7 @@ task copyResourcesToDistribution(type: Copy) {
         include 'LICENSE.txt'
         include 'standard.css'
         include 'standard.dat'
+        include 'GoMule.bat'
 
     }
     into "build/tmp/distribution/GoMule/"
