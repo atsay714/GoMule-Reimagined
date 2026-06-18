@@ -1,6 +1,7 @@
 package gomule.d2i;
 
 import com.google.common.io.BaseEncoding;
+import com.google.common.io.Resources;
 import gomule.item.D2ItemRenderer;
 import gomule.util.D2BitReader;
 import org.junit.jupiter.api.Test;
@@ -46,6 +47,31 @@ public class D2SharedStashReaderTest {
                         + "Version: Resurrected\n"
                         + "Finished: somethingSoftCore.d2i\n\n",
                 out.toString().replaceAll("\r", ""));
+    }
+
+    @Test
+    public void issue1RealWorldStashLoadsWithoutDisconnecting() throws Exception {
+        D2TxtFile.constructTxtFiles("./d2111");
+        String filename = new java.io.File(
+                Resources.getResource("sharedStash/SharedStashSoftCoreV2.d2i").toURI())
+                .getAbsolutePath();
+        D2SharedStash stash = new D2SharedStashReader().readStash(filename);
+
+        assertEquals(7, stash.getPanes().size());
+        assertEquals(2500000, stash.getPane(0).getGold());
+        assertEquals(2500000, stash.getPane(1).getGold());
+        assertEquals(957236, stash.getPane(2).getGold());
+        assertEquals(0, stash.getPane(3).getGold());
+        assertEquals(0, stash.getPane(4).getGold());
+        assertEquals(0, stash.getPane(5).getGold());
+        assertEquals(0, stash.getPane(6).getGold());
+        assertEquals(82, stash.getPane(0).getItems().size());
+        assertEquals(23, stash.getPane(1).getItems().size());
+        assertEquals(22, stash.getPane(2).getItems().size());
+        assertEquals(17, stash.getPane(3).getItems().size());
+        assertEquals(42, stash.getPane(4).getItems().size());
+        assertEquals(34, stash.getPane(5).getItems().size());
+        assertEquals(64, stash.getPane(6).getItems().size());
     }
 
     private List<String> getItemDumps(D2SharedStash.D2SharedStashPane pane) {
