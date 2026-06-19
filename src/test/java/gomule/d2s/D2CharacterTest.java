@@ -2,6 +2,7 @@ package gomule.d2s;
 
 import com.google.common.io.Resources;
 import gomule.item.D2Item;
+import gomule.item.D2ItemRenderer;
 import org.junit.jupiter.api.Test;
 import randall.d2files.D2TxtFile;
 
@@ -135,11 +136,13 @@ public class D2CharacterTest {
     }
 
     // A fourth real character (a Bowazon mule, by far the largest of the four at 233 items) hits
-    // an item-format gap none of the other three exercised: something around its 115th item
-    // fails to parse (item count and a quest item, Mephisto's Soulstone, were both candidates the
-    // player identified as being roughly in that position, but neither pinpointed it exactly --
-    // see D2Character.isItemsIncomplete()'s comment; the gap itself is still unresolved). This
-    // test isn't about that gap -- it's about the fallback added because of it: items can't be
+    // an item-format gap none of the other three exercised: its 115th item, a unique jewel
+    // ("Autumn Facet"), is followed by 48 bits nothing currently reads -- confirmed real (every
+    // property on the jewel itself matches its uniqueitems.txt recipe and the player's real
+    // in-game tooltip exactly) but still not understood well enough to fix: a second unique
+    // jewel from the same family needed a different number of extra bits (see bowazon2.d2s's
+    // test below), so "48 bits after this kind of item" isn't a safe general rule yet. This test
+    // isn't about that gap -- it's about the fallback added because of it: items can't be
     // individually resynced after a parse failure, so D2Character now keeps and shows everything
     // read before the failure instead of discarding the whole character, and refuses to save it.
     @Test
@@ -161,6 +164,45 @@ public class D2CharacterTest {
         Exception saveException = org.junit.jupiter.api.Assertions.assertThrows(
                 RuntimeException.class, () -> d2Character.saveInternal(null));
         assertTrue(saveException.getMessage().contains("did not fully load"));
+    }
+
+    // A second snapshot of the same character (after the player added two more unique jewels --
+    // "Rime Facet" and a third, lightning one -- to chase the gap above) found two more real,
+    // fixable bugs along the way, both confirmed independently of the still-open jewel gap:
+    //   - D2Item.readExtend()'s "rvl" (Full Rejuvenation Potion) fix: confirmed by brute-force
+    //     scanning the raw bytes for a valid next item at every bit offset near the boundary --
+    //     exactly 8 bits, in both this file and bowazon.d2s, was the only amount that produced a
+    //     real, recognizable item (not just "didn't throw").
+    //   - D2Prop.generateDisplay()'s case (19)/(29) fix: a new Reimagined stat
+    //     (pl_maxdamage_percent, on "Collin's Lesser Might") has only one value where this branch
+    //     previously always assumed two, throwing ArrayIndexOutOfBoundsException whenever an item
+    //     with that stat was rendered -- a real crash, not a parsing issue.
+    // This file still hits the open jewel gap eventually (now at "Rime Facet", 30 items further
+    // in than before the two fixes above), covered by the same partial-load fallback.
+    @Test
+    public void secondSnapshotOfAmazonCharacterConfirmsTwoMoreRealFixes() throws Exception {
+        D2TxtFile.constructTxtFiles("./d2111");
+        D2Character d2Character = new D2Character(
+                new File(Resources.getResource("charFiles/bowazon2.d2s").toURI()).getAbsolutePath());
+
+        assertEquals("bowazon", d2Character.getCharName());
+        assertTrue(d2Character.isItemsIncomplete());
+        assertTrue(d2Character.getItemsIncompleteReason().contains("Item 168 of 173 failed to parse"));
+
+        List<D2Item> items = d2Character.getItemList();
+        assertEquals(166, items.size());
+        // Confirms the rvl fix: without it, this item (right after the Full Rejuvenation
+        // Potion) was unreachable -- parsing broke down before ever getting here.
+        assertTrue(items.stream().anyMatch(i -> "Power of Ice".equals(i.getItemName())));
+        // Confirms the D2Prop fix: without it, rendering this specific item threw
+        // ArrayIndexOutOfBoundsException.
+        D2Item collins = items.stream()
+                .filter(i -> i.getItemName().contains("Collin's Lesser Might"))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("Collin's Lesser Might not found"));
+        assertEquals(-40, findPropValue(collins, 364)[0]); // pl_maxdamage_percent
+        assertEquals(-40, findPropValue(collins, 365)[0]); // pl_mindamage_percent
+        D2ItemRenderer.itemDump(collins, true); // must not throw
     }
 
     // Socketed runes' getItemName() includes embedded color-code markup and the "(#N)" rune

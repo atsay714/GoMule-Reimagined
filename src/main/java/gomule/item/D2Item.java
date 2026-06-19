@@ -488,6 +488,16 @@ public class D2Item implements Comparable, D2ItemInterface {
              */
             pFile.set_byte_pos(pFile.get_pos() - 8);
         }
+        // Same shape as the "bkd" quirk just above, found the same way: a Full Rejuvenation
+        // Potion ("rvl") is followed by one extra trailing byte that nothing above reads. Unlike
+        // "bkd", this one is confirmed specific to the current (post-v99) format, not a
+        // longstanding quirk -- and confirmed in two independent real characters: skipping
+        // exactly 8 bits here, not 0 and not 16, was the only amount that let the very next item
+        // decode (in both files, into a real, recognizable item -- not just "didn't throw").
+        // What this byte actually holds is still unknown.
+        if ("rvl".equals(item_type) && usesPostV99ItemFormat()) {
+            pFile.skipBits(8);
+        }
     }
 
     private void readExtend1(D2BitReader pFile) throws Exception {
