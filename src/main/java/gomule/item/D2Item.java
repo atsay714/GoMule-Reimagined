@@ -409,6 +409,15 @@ public class D2Item implements Comparable, D2ItemInterface {
             pFile.set_pos(pFile.getNextByteBoundaryInBits());
             for (int i = 0; i < iSocketNrFilled; i++) {
                 D2Item lSocket = new D2Item(iFileName, pFile, iCharLvl);
+                // Current D2R (version 105) inserts one full extra byte after each socketed
+                // sub-item (gem/rune/jewel actually filled into a socket) before the next one --
+                // or before whatever follows if it's the last. Confirmed against a real runeword
+                // (Pul+Hel+El = "Love"): without this skip, the first socketed rune decoded
+                // correctly but every rune after it read as garbage; with it, all three rune
+                // names and the ~20 items that follow in the same file decode correctly.
+                if (usesPostV99ItemFormat()) {
+                    pFile.skipBits(8);
+                }
                 iSocketedItems.add(lSocket);
 
                 if (lSocket.isJewel()) {
@@ -834,11 +843,13 @@ public class D2Item implements Comparable, D2ItemInterface {
         // prior format. Confirmed: applying any of these unconditionally to every item --
         // including the pre-v100 fixtures elsewhere in this codebase -- broke a known-good
         // version-99 shared-stash file, so all of them are gated on file version. The exact
-        // layout, derived empirically from two real version-105 characters (a Barbarian and a
-        // Druid mule, ~26 items total spanning socketed/ethereal/unique/charm/stackable/simple
-        // types) and cross-checked against real item data (defense/durability against base item
-        // stats in armor.txt/weapons.txt, decoded property values against fixed ranges in
-        // uniqueitems.txt, and the player's own in-game socket count) is:
+        // layout, derived empirically from three real version-105 characters (a Barbarian, a
+        // Druid, and an Amazon mule, ~70 items total spanning socketed/ethereal/unique/runeword/
+        // charm/stackable/simple types) and cross-checked against real item data (defense/
+        // durability against base item stats in armor.txt/weapons.txt, decoded property values
+        // against fixed ranges in uniqueitems.txt, the player's own in-game socket count, and --
+        // for the two runeword items in the Amazon mule -- every line of their actual in-game
+        // tooltips) is:
         //   - socketed items get one extra bit immediately before the socket-count field, and
         //     one more immediately after the property list.
         //   - non-socketed items get one extra bit immediately before the property list instead.
@@ -874,6 +885,20 @@ public class D2Item implements Comparable, D2ItemInterface {
         } else {
             readProperties(pFile, 0);
         }
+        // A runeword's own bonus properties (e.g. Edge's Thorns aura, +skills, etc.) are a
+        // second property list, stored back-to-back with the item's own list -- immediately
+        // after its terminator, with none of the trailing bits below in between. Confirmed
+        // against a real runeword bow (Edge: Tir+Tal+Amn) by reading every line of its in-game
+        // tooltip and matching each one to its underlying stat (strength/energy/dexterity/
+        // vitality for "+9 to all Attributes", item_reducedprices, item_fasterattackrate,
+        // item_preventheal, item_demondamage_percent, item_undeaddamage_percent, item_aura for
+        // the Thorns aura) -- putting the trailing bits before this list, as an earlier version
+        // of this fix did, decoded plausible-looking but real-data-mismatched values (e.g. a
+        // dexterity bonus of +50 from a bow, an unrelated "Attacker Takes Damage" stat) that
+        // didn't throw and were only caught by checking against the player's actual tooltip.
+        if (iRuneWord) {
+            readProperties(pFile, 0);
+        }
         if (iSocketed && usesPostV99ItemFormat()) {
             pFile.skipBits(1);
         }
@@ -889,9 +914,6 @@ public class D2Item implements Comparable, D2ItemInterface {
                     readProperties(pFile, x + 2);
                 }
             }
-        }
-        if (iRuneWord) {
-            readProperties(pFile, 0);
         }
     }
 

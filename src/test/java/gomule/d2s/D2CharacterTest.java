@@ -87,6 +87,77 @@ public class D2CharacterTest {
         assertTrue(items.stream().anyMatch(i -> "Wraith Whisper".equals(i.getItemName())));
     }
 
+    // This third character exercises two more gaps found only once a real character had a
+    // runeword item with sub-items actually socketed into it (the first two fixtures' runeword
+    // items, if any, had empty sockets):
+    //   - one extra byte after each socketed sub-item (D2Item's socket-recursion loop comment),
+    //     confirmed by decoding the three runes socketed into "Love" (Pul, Hel, El) correctly.
+    //   - a runeword's own bonus properties are a second property list read back-to-back with
+    //     the item's own list, before (not after) the trailing bits (D2Item.readExtend2()'s
+    //     second comment), confirmed against "Edge" (Tir+Tal+Amn) by matching every line of the
+    //     player's actual in-game tooltip to its underlying stored stat. An earlier, incorrect
+    //     version of this fix read plausible-but-wrong values here (e.g. +50 Dexterity from a
+    //     bow) that did not throw and were only caught by checking the tooltip.
+    @Test
+    public void realVersion105AmazonCharacterWithRunewordSocketsParsesCorrectly() throws Exception {
+        D2TxtFile.constructTxtFiles("./d2111");
+        D2Character d2Character = new D2Character(
+                new File(Resources.getResource("charFiles/zon_gear.d2s").toURI()).getAbsolutePath());
+
+        assertEquals("zon_gear", d2Character.getCharName());
+        assertEquals("Amazon", d2Character.getCharClass());
+
+        List<D2Item> items = d2Character.getItemList();
+        assertEquals(46, items.size());
+
+        D2Item love = items.stream()
+                .filter(i -> "Love".equals(i.getItemName()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("Love not found"));
+        assertEquals(3, love.getSocketNrTotal());
+        assertSocketedRuneNamesContain(love, "Pul Rune", "Hel Rune", "El Rune");
+
+        D2Item edge = items.stream()
+                .filter(i -> "Edge".equals(i.getItemName()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("Edge not found"));
+        assertEquals(3, edge.getSocketNrTotal());
+        assertSocketedRuneNamesContain(edge, "Tir Rune", "Tal Rune", "Amn Rune");
+
+        // Every one of these matches a line from the player's actual in-game tooltip for this
+        // item (stat IDs from itemstatcost.txt: 151=item_aura, 121=item_demondamage_percent,
+        // 122=item_undeaddamage_percent, 2=dexterity -- one of the four "+9 to all Attributes"
+        // components).
+        assertEquals(15, findPropValue(edge, 151)[1]); // Level 15 Thorns Aura When Equipped
+        assertEquals(334, findPropValue(edge, 121)[0]); // +334% Damage to Demons
+        assertEquals(280, findPropValue(edge, 122)[0]); // +280% Damage to Undead
+        assertEquals(9, findPropValue(edge, 2)[0]); // part of "All Stats +9"
+    }
+
+    // Socketed runes' getItemName() includes embedded color-code markup and the "(#N)" rune
+    // number (as rendered for display), so this checks each expected name is a substring rather
+    // than an exact match.
+    private static void assertSocketedRuneNamesContain(D2Item item, String... expectedNames) {
+        List<D2Item> sockets = item.getiSocketedItems();
+        assertEquals(expectedNames.length, sockets.size());
+        for (int i = 0; i < expectedNames.length; i++) {
+            assertTrue(
+                    sockets.get(i).getItemName().contains(expectedNames[i]),
+                    "Expected socket " + i + " of " + item.getItemName() + " to contain '"
+                            + expectedNames[i] + "' but was: " + sockets.get(i).getItemName());
+        }
+    }
+
+    private static int[] findPropValue(D2Item item, int statId) {
+        for (Object propObj : item.getPropCollection()) {
+            gomule.item.D2Prop prop = (gomule.item.D2Prop) propObj;
+            if (prop.getPNum() == statId) {
+                return prop.getPVals();
+            }
+        }
+        throw new AssertionError("Stat " + statId + " not found on " + item.getItemName());
+    }
+
     @Test
     public void classByteToAbbreviationHandlesAllEightClasses() {
         assertEquals("ama", D2Character.classByteToAbbreviation(0));
