@@ -134,6 +134,35 @@ public class D2CharacterTest {
         assertEquals(9, findPropValue(edge, 2)[0]); // part of "All Stats +9"
     }
 
+    // A fourth real character (a Bowazon mule, by far the largest of the four at 233 items) hits
+    // an item-format gap none of the other three exercised: something around its 115th item
+    // fails to parse (item count and a quest item, Mephisto's Soulstone, were both candidates the
+    // player identified as being roughly in that position, but neither pinpointed it exactly --
+    // see D2Character.isItemsIncomplete()'s comment; the gap itself is still unresolved). This
+    // test isn't about that gap -- it's about the fallback added because of it: items can't be
+    // individually resynced after a parse failure, so D2Character now keeps and shows everything
+    // read before the failure instead of discarding the whole character, and refuses to save it.
+    @Test
+    public void realVersion105AmazonCharacterWithUnparseableItemLoadsPartially() throws Exception {
+        D2TxtFile.constructTxtFiles("./d2111");
+        D2Character d2Character = new D2Character(
+                new File(Resources.getResource("charFiles/bowazon.d2s").toURI()).getAbsolutePath());
+
+        assertEquals("bowazon", d2Character.getCharName());
+        assertEquals("Amazon", d2Character.getCharClass());
+        assertTrue(d2Character.isItemsIncomplete());
+        assertTrue(d2Character.getItemsIncompleteReason().contains("Item 115 of 233 failed to parse"));
+
+        // Everything up to the failure is still real, decoded data, not a truncated/empty list.
+        List<D2Item> items = d2Character.getItemList();
+        assertEquals(114, items.size());
+        assertTrue(items.stream().anyMatch(i -> i.getItemName().contains("Autumn Facet")));
+
+        Exception saveException = org.junit.jupiter.api.Assertions.assertThrows(
+                RuntimeException.class, () -> d2Character.saveInternal(null));
+        assertTrue(saveException.getMessage().contains("did not fully load"));
+    }
+
     // Socketed runes' getItemName() includes embedded color-code markup and the "(#N)" rune
     // number (as rendered for display), so this checks each expected name is a substring rather
     // than an exact match.

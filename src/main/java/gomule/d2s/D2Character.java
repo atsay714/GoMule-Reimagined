@@ -127,6 +127,17 @@ public class D2Character extends D2ItemListAdapter {
     private byte iBetweenItems[];
     private byte iAfterItems[];
 
+    // Set when an item partway through this character's item list fails to parse (an unknown
+    // item-format gap; see D2Item.readExtend2()'s comment for the ones already found). Items
+    // can't be individually re-synced after a parse failure -- each one's length is only known
+    // once it parses successfully, so there is no "skip the bad item" option. Instead, everything
+    // successfully read *before* the failure is kept and shown; nothing after it is. Saving is
+    // refused (see saveInternal()) because the raw bytes this class would need to write back
+    // (iBeforeItems/iBetweenItems/iAfterItems) were never captured -- writing without them would
+    // silently truncate the character file.
+    private boolean iItemsIncomplete = false;
+    private String iItemsIncompleteReason;
+
     public D2Character(String pFileName) throws Exception {
         super(pFileName);
         if (iFileName == null || !iFileName.toLowerCase().endsWith(".d2s"))
@@ -521,11 +532,26 @@ public class D2Character extends D2ItemListAdapter {
         int num_items = (int) iReader.read(16);
         int lCharStart = lFirstPos + 4;
         int lCharEnd = lCharStart;
+        int lCharItemsRead = 0;
         for (int i = 0; i < num_items; i++) {
             int lItemStart = iReader.get_byte_pos();
-            D2Item lItem = new D2Item(iFileName, iReader, iCharLevel);
+            D2Item lItem;
+            try {
+                lItem = new D2Item(iFileName, iReader, iCharLevel);
+            } catch (Exception pEx) {
+                // An item partway through the list failed to parse -- there is no reliable way
+                // to skip just this one and resync on the next, since each item's length is only
+                // known once it has parsed successfully (see this field's own comment). Keep
+                // everything read so far and stop; the rest of readChar() (skills, stats) doesn't
+                // depend on item positions and still runs normally.
+                iItemsIncomplete = true;
+                iItemsIncompleteReason = "Item " + (i + 1) + " of " + num_items + " failed to parse: " + pEx;
+                iItemEnd = lCharEnd;
+                return;
+            }
             lLastItemEnd = lItemStart + lItem.getItemLength();
             lCharEnd = lLastItemEnd;
+            lCharItemsRead++;
             if (lItem.isCursorItem()) {
                 if (iCharCursorItem != null) throw new Exception("Double cursor item found");
                 iCharCursorItem = lItem;
@@ -547,7 +573,17 @@ public class D2Character extends D2ItemListAdapter {
             for (int i = 0; i < num_items; i++) {
                 int lItemStart = iReader.get_byte_pos();
                 if (lItemStart == -1) throw new Exception("Merc item " + (i + 1) + " not found.");
-                D2Item lItem = new D2Item(iFileName, iReader, iCharLevel);
+                D2Item lItem;
+                try {
+                    lItem = new D2Item(iFileName, iReader, iCharLevel);
+                } catch (Exception pEx) {
+                    // Same situation as the char-items loop above, just further into the file --
+                    // all lCharItemsRead character items already read are still kept and shown.
+                    iItemsIncomplete = true;
+                    iItemsIncompleteReason = "Mercenary item " + (i + 1) + " of " + num_items
+                            + " failed to parse (all " + lCharItemsRead + " character items loaded fine): " + pEx;
+                    return;
+                }
                 lLastItemEnd = lItemStart + lItem.getItemLength();
                 lMercEnd = lLastItemEnd;
                 addMercItem(lItem);
@@ -1314,6 +1350,15 @@ public class D2Character extends D2ItemListAdapter {
     }
 
     public void saveInternal(D2Project pProject) {
+        // Refuse to write back a character whose item list didn't fully parse -- iBeforeItems /
+        // iBetweenItems / iAfterItems (the raw bytes this needs below to reassemble the file)
+        // were never captured in that case, so writing would silently truncate or corrupt the
+        // character file. See isItemsIncomplete()'s comment for why a partial item list can't be
+        // safely resynced and re-attempted.
+        if (iItemsIncomplete) {
+            throw new RuntimeException(
+                    "Cannot save " + iCharName + ": its item list did not fully load (" + iItemsIncompleteReason + ")");
+        }
         // backup file
         D2Backup.backup(pProject, iFileName, iReader);
         // build an a byte array that contains the
@@ -1796,6 +1841,14 @@ public class D2Character extends D2ItemListAdapter {
 
     public String getCharName() {
         return iCharName;
+    }
+
+    public boolean isItemsIncomplete() {
+        return iItemsIncomplete;
+    }
+
+    public String getItemsIncompleteReason() {
+        return iItemsIncompleteReason;
     }
 
     public long getCharExp() {

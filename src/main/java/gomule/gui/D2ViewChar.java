@@ -495,7 +495,15 @@ public class D2ViewChar extends JInternalFrame implements D2ItemContainer, D2Ite
             }
 
             itemListChanged();
-            iMessage.setText("Character loaded");
+            if (iCharacter.isItemsIncomplete()) {
+                // Items loaded up to the point of failure are still shown (see
+                // D2Character.isItemsIncomplete()'s comment) -- saving is refused separately, in
+                // D2Character.saveInternal(), so this is purely informational.
+                iMessage.setText("Character loaded PARTIALLY -- saving is disabled. "
+                        + iCharacter.getItemsIncompleteReason());
+            } else {
+                iMessage.setText("Character loaded");
+            }
         } catch (Exception pEx) {
             disconnect(pEx);
             pEx.printStackTrace();
