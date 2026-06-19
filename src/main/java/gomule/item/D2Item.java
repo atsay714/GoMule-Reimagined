@@ -145,6 +145,8 @@ public class D2Item implements Comparable, D2ItemInterface {
 
     private String iSetName;
 
+    private D2TxtFileItemProperties iSetItemRow;
+
     private int setSize;
 
     private String iItemQuality = "none";
@@ -607,6 +609,7 @@ public class D2Item implements Comparable, D2ItemInterface {
                 }
 
                 D2TxtFileItemProperties lSet = D2TxtFile.SETITEMS.searchColumns("*ID", String.valueOf(set_id));
+                iSetItemRow = lSet;
                 String nameFromSetFile = lSet.get("index");
                 String translatedName = D2Files.getInstance().getTranslations().getTranslation(nameFromSetFile);
                 iItemName = translatedName == null ? nameFromSetFile : translatedName;
@@ -899,6 +902,42 @@ public class D2Item implements Comparable, D2ItemInterface {
         if (iRuneWord) {
             readProperties(pFile, 0);
         }
+        // Same shape as the runeword fix just above: a set item's per-threshold bonus
+        // properties are additional property lists, read back-to-back with everything above --
+        // before the trailing bits, not after. In the current (post-v99) format, how many of
+        // these lists are present has nothing to do with the lSet flags just read above: those
+        // track which thresholds are *currently active* (i.e. how many pieces of the set the
+        // player has on right now), which can go up and down as gear changes, but the bonus
+        // values themselves -- once rolled -- are stored permanently regardless of whether
+        // they're presently contributing. The number of stored lists instead matches the number
+        // of non-empty "aprop<N>a" threshold columns this specific set item has in setitems.txt
+        // (1 through 5; if a threshold has no bonus defined for this item at all, no list was
+        // ever rolled or stored for it). Confirmed against two real set items: Immortal King's
+        // Stone Crusher (lSet all five thresholds: 0,1,1,1,1 -- i.e. missing the *lowest* one --
+        // but all five aprop columns are non-empty, and reading five lists, not four, was
+        // required) and Ebony Plate of Evil (lSet 0,0,1,1,0 -- two thresholds active -- but only
+        // two aprop columns (2 and 3) are non-empty, and reading exactly those two, not four, was
+        // required). Both contradict "read one list per active lSet flag" or "read up to the
+        // highest active flag" -- only "one list per non-empty recipe column" fit both.
+        // A real v99 shared-stash fixture (predating this discovery, from issue #1) breaks under
+        // that rule -- it stores bonus lists only for thresholds the lSet flags actually mark
+        // active, same as this code always assumed before now -- so the old behavior is kept for
+        // anything not confirmed to be on the current format.
+        if (quality == 5) {
+            if (usesPostV99ItemFormat() && iSetItemRow != null) {
+                for (int x = 1; x <= 5; x++) {
+                    if (!iSetItemRow.get("aprop" + x + "a").equals("")) {
+                        readProperties(pFile, x + 1);
+                    }
+                }
+            } else {
+                for (int x = 0; x < 5; x++) {
+                    if (lSet[x] == 1) {
+                        readProperties(pFile, x + 2);
+                    }
+                }
+            }
+        }
         if (iSocketed && usesPostV99ItemFormat()) {
             pFile.skipBits(1);
         }
@@ -907,13 +946,6 @@ public class D2Item implements Comparable, D2ItemInterface {
         }
         if (iEthereal && usesPostV99ItemFormat()) {
             pFile.skipBits(1);
-        }
-        if (quality == 5) {
-            for (int x = 0; x < 5; x++) {
-                if (lSet[x] == 1) {
-                    readProperties(pFile, x + 2);
-                }
-            }
         }
     }
 
