@@ -827,6 +827,33 @@ public class D2Item implements Comparable, D2ItemInterface {
 
         }
 
+        // Current D2R (item format version drift alongside the .d2s header changes elsewhere in
+        // this fork -- version 105 confirmed -- not yet documented anywhere public, including
+        // D2CE's, whose newest documented item version is "v140"/Patch 2.5) inserts extra bits
+        // around the socket-count field and the magical property list that don't exist in any
+        // prior format. Confirmed: applying any of these unconditionally to every item --
+        // including the pre-v100 fixtures elsewhere in this codebase -- broke a known-good
+        // version-99 shared-stash file, so all of them are gated on file version. The exact
+        // layout, derived empirically from two real version-105 characters (a Barbarian and a
+        // Druid mule, ~26 items total spanning socketed/ethereal/unique/charm/stackable/simple
+        // types) and cross-checked against real item data (defense/durability against base item
+        // stats in armor.txt/weapons.txt, decoded property values against fixed ranges in
+        // uniqueitems.txt, and the player's own in-game socket count) is:
+        //   - socketed items get one extra bit immediately before the socket-count field, and
+        //     one more immediately after the property list.
+        //   - non-socketed items get one extra bit immediately before the property list instead.
+        //   - every item -- socketed or not -- gets one further extra bit after the property
+        //     list, on top of whichever of the above it already got. Ethereal items get one
+        //     additional bit beyond that, also after the property list.
+        // "Doesn't throw" was repeatedly not enough evidence that a guess here was right -- wrong
+        // guesses often produced a plausible-but-wrong value (e.g. a socket count that
+        // coincidentally equaled the item's max, or a durability that happened to coincide with
+        // an unrelated real mechanic) and only surfaced once the *next* item's data came out as
+        // garbage. Every bit below was confirmed by checking decoded values against real data,
+        // not just by checking for an exception.
+        if (iSocketed && usesPostV99ItemFormat()) {
+            pFile.skipBits(1);
+        }
         if (iSocketed) {
             iSocketNrTotal = (short) pFile.read(4);
         }
@@ -839,17 +866,7 @@ public class D2Item implements Comparable, D2ItemInterface {
             }
         }
 
-        // Current D2R (item format version drift alongside the .d2s header changes elsewhere
-        // in this fork -- version 105 confirmed -- not yet documented anywhere public, including
-        // D2CE's, whose newest documented item version is "v140"/Patch 2.5) has one extra bit
-        // here, after durability/sockets/set-flags and right before the magical property list,
-        // that doesn't exist in any prior format (confirmed: applying this unconditionally broke
-        // a known-good version-99 shared-stash file). Confirmed PRESENT against multiple real
-        // items from a real version-105 character's raw bytes (Horadric Cube, two non-ethereal
-        // uniques) by cross-checking the resulting defense/durability against their known base
-        // item stats in armor.txt -- without this skip, every one of them misreads its property
-        // list as garbage stat IDs. See setFormatVersion()'s comment for what's still unknown.
-        if (usesPostV99ItemFormat()) {
+        if (usesPostV99ItemFormat() && !iSocketed) {
             pFile.skipBits(1);
         }
         if (iJewel) {
@@ -857,14 +874,12 @@ public class D2Item implements Comparable, D2ItemInterface {
         } else {
             readProperties(pFile, 0);
         }
-        // Ethereal items need one MORE bit than non-ethereal ones in the post-v99 format,
-        // positioned after the property list rather than before it. Confirmed against two real
-        // ethereal uniques (Arreat's Face, a second ethereal unique sword) -- their durability
-        // values came out exactly half their base item's durability (the well-known
-        // ethereal-halves-durability mechanic), confirming the property-list read itself was
-        // already correct for them, and every item *after* an ethereal one parsed correctly once
-        // this was added, all the way through to the file's trailing markers landing at the
-        // exact right byte.
+        if (iSocketed && usesPostV99ItemFormat()) {
+            pFile.skipBits(1);
+        }
+        if (usesPostV99ItemFormat()) {
+            pFile.skipBits(1);
+        }
         if (iEthereal && usesPostV99ItemFormat()) {
             pFile.skipBits(1);
         }
