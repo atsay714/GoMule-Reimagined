@@ -1558,10 +1558,17 @@ public class D2FileManager extends JFrame {
         for (int x = 0; x < stashList.length; x = x + 1) {
             System.out.println(stashList.length);
             java.io.File lFile = stashList[x];
-            // An existing stash only needs to be opened (read); a new one (typed in but not yet
-            // on disk) is about to be created, so its parent directory genuinely needs to be
-            // writable -- that check is kept as-is, unlike the read-only one above.
-            if ((lFile.exists() && !canRead(lFile)) || (!lFile.exists() && !canWrite(lFile.getParentFile()))) {
+            // A new stash (typed in but not yet on disk) is NOT created here -- D2Stash's
+            // constructor (via D2BitReader.load_file()) only builds an empty in-memory
+            // representation for a file that doesn't exist yet; it never touches the filesystem
+            // for writing. The actual write only happens later, at save time, and D2BitReader's
+            // own save() already throws a clear, real I/O error there if the directory genuinely
+            // isn't writable -- so unlike the read check below, there's nothing useful to
+            // pre-check for a not-yet-existing file. This used to call canWrite() on the parent
+            // directory upfront, with the same Files.isWritable() unreliability problem as the
+            // read-side fix above (confirmed real: it blocked creating a brand-new stash in a
+            // directory that was, in fact, writable).
+            if (lFile.exists() && !canRead(lFile)) {
                 D2FileManager.displayErrorDialog(
                         new Exception("Access denied to file, please move it to a location that GoMule can access"));
                 return new String[0];
@@ -1591,13 +1598,6 @@ public class D2FileManager extends JFrame {
     // can't write back will still fail with its own, more specific I/O error at save time.
     private boolean canRead(File lFile) {
         return Files.isReadable(lFile.toPath());
-    }
-
-    // Used only when a new file is about to be created (e.g. a stash typed into the file
-    // chooser that doesn't exist yet) -- there, write access genuinely is required up front,
-    // unlike opening an existing file above.
-    private boolean canWrite(File lFile) {
-        return Files.isWritable(lFile.toPath());
     }
 
     public void openStash(String pStashName, boolean load) {

@@ -48,7 +48,7 @@ public class D2SharedStashTest {
         expectedGrid[3][4] = items.get(0);
         expectedGrid[4][4] = items.get(0);
         expectedGrid[9][9] = items.get(1);
-        D2SharedStashPane expected = new D2SharedStashPane(items, expectedGrid, 0, null);
+        D2SharedStashPane expected = new D2SharedStashPane(items, expectedGrid, 0, null, null);
         assertEquals(expected, D2SharedStashPane.fromItems(items, 0));
     }
 

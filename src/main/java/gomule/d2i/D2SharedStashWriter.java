@@ -31,7 +31,14 @@ public class D2SharedStashWriter {
         if (stashHeaderOffsets.length > 7) throw new RuntimeException("Stash unsupported");
         List<byte[]> stashPanes = new ArrayList<>();
         for (int i = 0; i < stash.getPanes().size(); i++) {
-            stashPanes.add(writeStashPane(stash.getPane(i), bitReader, stashHeaderOffsets[i], bitReader.findNextFlag("JM", stashHeaderOffsets[i])));
+            D2SharedStash.D2SharedStashPane pane = stash.getPane(i);
+            // An incomplete pane is written back exactly as read, regardless of its (empty, or
+            // partially-read) in-memory item list -- see D2SharedStashPane.fromItemsPartial()'s
+            // comment for why reconstructing one of these instead would risk corrupting or
+            // truncating content GoMule doesn't fully understand.
+            stashPanes.add(pane.getOriginalBytes() != null
+                    ? pane.getOriginalBytes()
+                    : writeStashPane(pane, bitReader, stashHeaderOffsets[i], bitReader.findNextFlag("JM", stashHeaderOffsets[i])));
         }
         writeToFile(stashPanes);
     }
@@ -58,7 +65,12 @@ public class D2SharedStashWriter {
     public void writeHeader(D2SharedStash.D2SharedStashPane pane, D2BitReader bitWriter, long length) {
         bitWriter.skipBytes(8);
         long version = bitWriter.read(8);
-        if (version != 99) throw new RuntimeException("Overwriting wrong version stash");
+        // Same version drift as the read side (D2SharedStashReader's comment): the version field
+        // increments with every D2R patch, but this header's own layout hasn't changed. A strict
+        // == 99 check here meant saving was blocked for every current (post-v99) stash, including
+        // the otherwise-fully-working panes of a real one -- this was never reachable before now,
+        // since saving any incomplete stash was refused outright before reaching this code.
+        if (version < 99) throw new RuntimeException("Overwriting wrong version stash");
         bitWriter.skipBytes(3);
         bitWriter.write(pane.getGold(), 24);
         bitWriter.skipBytes(1);
