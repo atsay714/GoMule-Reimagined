@@ -15,6 +15,28 @@ public class SharedStashPanel extends JPanel {
 
     public static final int BG_WIDTH = 552;
     public static final int BG_HEIGHT = 567;
+
+    // Right edge (in panel-local pixels) of each of the up to 7 stash tabs baked into
+    // resources/stash1.png..stash7.png's tab strip -- shared between click detection (below) and
+    // build()'s blanking-out of tabs for panes GoMule can't parse (see DLC tabs comment in build()).
+    // The strip's left edge starts at TAB_STRIP_LEFT; tab i spans
+    // (i == 0 ? TAB_STRIP_LEFT : TAB_RIGHT_EDGES[i - 1]) .. TAB_RIGHT_EDGES[i].
+    public static final int[] TAB_RIGHT_EDGES = {87, 150, 212, 275, 337, 400, 462};
+    public static final int TAB_STRIP_LEFT = 27;
+    public static final int TAB_STRIP_CLICK_TOP = 51;
+    public static final int TAB_STRIP_CLICK_BOTTOM = 72;
+
+    // Region just past the last real tab, before the panel's right border -- a plain dark texture
+    // with the same continuous gold underline as the tabs themselves, and never affected by which
+    // tab is highlighted. Used as a source to paint over (DLC-only) tabs GoMule can't parse, since
+    // there's no art with fewer than 7 tabs baked in. Sampled fresh from whichever stash*.png is
+    // currently being drawn (not a separately loaded reference image) so any per-image texture
+    // noise matches its neighbours exactly.
+    private static final int BLANK_TAB_PATCH_TOP = 50;
+    private static final int BLANK_TAB_PATCH_BOTTOM = 75;
+    private static final int BLANK_TAB_PATCH_SOURCE_LEFT = 465;
+    private static final int BLANK_TAB_PATCH_SOURCE_RIGHT = 521;
+
     private final D2FileManager fileManager;
     private final D2ViewSharedStash sharedStashView;
     private int selectedStashPaneIndex = 0;
@@ -40,8 +62,63 @@ public class SharedStashPanel extends JPanel {
         background = fileManager.getGraphicsConfiguration().createCompatibleImage(BG_WIDTH, BG_HEIGHT, Transparency.BITMASK);
         Graphics2D lGraphics = (Graphics2D) background.getGraphics();
         lGraphics.drawImage(lEmptyBackground, 0, 0, this);
+        hideIncompleteTabs(lGraphics, lEmptyBackground);
         if (getSharedStash() != null) placeItemsInView();
         repaint();
+    }
+
+    // DLC stash files have up to 4 extra tabs (gems/runes/materials-type categories) whose item
+    // lists GoMule can't parse at all -- D2SharedStashReader preserves their exact original bytes
+    // so the file still saves correctly (see D2SharedStash.isItemsIncomplete()'s comment), but
+    // their in-memory item list is empty. Leaving their tabs clickable would show what looks like
+    // an empty page -- indistinguishable from "my items are gone" -- for items that are actually
+    // still safely there, just unparsed. Non-DLC stashes never have an incomplete pane (confirmed
+    // against a real non-DLC fixture -- see D2SharedStashReaderTest), so this never touches their
+    // tabs. Painted over rather than skipped when drawing, since the tab art is baked into the
+    // background image with no "N tabs" variant to fall back to.
+    private void hideIncompleteTabs(Graphics2D lGraphics, Image lEmptyBackground) {
+        D2SharedStash sharedStash = getSharedStash();
+        if (sharedStash == null) return;
+        java.util.List<D2SharedStash.D2SharedStashPane> panes = sharedStash.getPanes();
+        for (int i = 0; i < panes.size(); i++) {
+            if (panes.get(i).isIncomplete()) paintOverTab(lGraphics, lEmptyBackground, i);
+        }
+    }
+
+    private void paintOverTab(Graphics2D lGraphics, Image lEmptyBackground, int tabIndex) {
+        int left = (tabIndex == 0) ? TAB_STRIP_LEFT : TAB_RIGHT_EDGES[tabIndex - 1];
+        int right = TAB_RIGHT_EDGES[tabIndex];
+        int patchWidth = BLANK_TAB_PATCH_SOURCE_RIGHT - BLANK_TAB_PATCH_SOURCE_LEFT;
+        for (int x = left; x < right; x += patchWidth) {
+            int width = Math.min(patchWidth, right - x);
+            lGraphics.drawImage(lEmptyBackground,
+                    x, BLANK_TAB_PATCH_TOP, x + width, BLANK_TAB_PATCH_BOTTOM,
+                    BLANK_TAB_PATCH_SOURCE_LEFT, BLANK_TAB_PATCH_TOP, BLANK_TAB_PATCH_SOURCE_LEFT + width, BLANK_TAB_PATCH_BOTTOM,
+                    this);
+        }
+    }
+
+    // Maps a click's x-coordinate to which of the up to 7 baked-in tabs it falls within, ignoring
+    // whether a pane actually exists/is clickable at that index -- see getClickedTabIndex(), which
+    // combines this with the real pane list to decide whether the click does anything.
+    private static Integer getTabIndexForXCoord(int x) {
+        if (x < TAB_STRIP_LEFT) return null;
+        for (int i = 0; i < TAB_RIGHT_EDGES.length; i++) {
+            if (x <= TAB_RIGHT_EDGES[i]) return i;
+        }
+        return null;
+    }
+
+    // Which tab (if any) a click at (x, y) selects, given this stash's actual panes -- null if the
+    // click misses the tab strip entirely, lands past the last real pane, or lands on a pane
+    // GoMule can't parse (painted over in build(); see hideIncompleteTabs()'s comment). Kept as a
+    // pure function of (x, y, panes), independent of any live SharedStashPanel/Swing state, so the
+    // tab-hiding decision is directly testable.
+    public static Integer getClickedTabIndex(int x, int y, java.util.List<D2SharedStash.D2SharedStashPane> panes) {
+        if (y < TAB_STRIP_CLICK_TOP || y > TAB_STRIP_CLICK_BOTTOM) return null;
+        Integer tabIndex = getTabIndexForXCoord(x);
+        if (tabIndex == null || tabIndex >= panes.size() || panes.get(tabIndex).isIncomplete()) return null;
+        return tabIndex;
     }
 
     private void placeItemsInView() {

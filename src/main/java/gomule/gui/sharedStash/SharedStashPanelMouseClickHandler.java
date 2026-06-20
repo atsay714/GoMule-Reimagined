@@ -99,18 +99,13 @@ class SharedStashPanelMouseClickHandler extends MouseAdapter {
         sharedStashPanel.build();
     }
 
+    // DLC-only tabs GoMule can't parse are painted over in SharedStashPanel.build() and must not
+    // be clickable either -- not just because there's nothing there to click, but because clicking
+    // in would show what looks like an empty page for items that are actually still safely
+    // preserved (see SharedStashPanel.hideIncompleteTabs()'s comment). Non-DLC stashes never have
+    // an incomplete pane, so isIncomplete() never excludes any of their (real, clickable) tabs.
+    // See SharedStashPanel.getClickedTabIndex() for the actual decision logic.
     private Integer getPossibleStashTabClick(int x, int y) {
-        int paneCount = this.sharedStashPanel.getSharedStash().getPanes().size();
-
-        if (x >= 27 && x <= 462 && y >= 51 && y <= 72) {
-            if ((x <= 87) && (paneCount >= 1)) return 0;
-            if ((x <= 150) && (paneCount >= 2)) return 1;
-            if ((x <= 212) && (paneCount >= 3)) return 2;
-            if ((x <= 275) && (paneCount >= 4)) return 3;
-            if ((x <= 337) && (paneCount >= 5)) return 4;
-            if ((x <= 400) && (paneCount >= 6)) return 5;
-            if (paneCount >= 7) return 6;
-        }
-        return null;
+        return SharedStashPanel.getClickedTabIndex(x, y, this.sharedStashPanel.getSharedStash().getPanes());
     }
 }
