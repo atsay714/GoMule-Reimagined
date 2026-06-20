@@ -137,14 +137,14 @@ public class D2CharacterTest {
 
     // A fourth real character (a Bowazon mule, by far the largest of the four at 233 items) hits
     // an item-format gap none of the other three exercised: its 115th item, a unique jewel
-    // ("Autumn Facet"), is followed by 48 bits nothing currently reads -- confirmed real (every
-    // property on the jewel itself matches its uniqueitems.txt recipe and the player's real
-    // in-game tooltip exactly) but still not understood well enough to fix: a second unique
-    // jewel from the same family needed a different number of extra bits (see bowazon2.d2s's
-    // test below), so "48 bits after this kind of item" isn't a safe general rule yet. This test
-    // isn't about that gap -- it's about the fallback added because of it: items can't be
-    // individually resynced after a parse failure, so D2Character now keeps and shows everything
-    // read before the failure instead of discarding the whole character, and refuses to save it.
+    // ("Autumn Facet"), is followed by 48 extra trailing bits nothing else reads -- this is the
+    // "elemental Facet" fix (D2Item.isElementalFacet() and its two call sites). Confirmed real
+    // by checking every property on the jewel itself against its uniqueitems.txt recipe and the
+    // player's real in-game tooltip, and confirmed general (not file-specific) across three
+    // independent Facets in two files, including one appearing as a socketed sub-item (see
+    // bowazon2.d2s's test below). With the fix, this file's full 233-item player inventory now
+    // loads without any partial-load fallback; the character is still reported incomplete because
+    // of a real, separate, not-yet-fixed bug in the mercenary item list (its very first item).
     @Test
     public void realVersion105AmazonCharacterWithUnparseableItemLoadsPartially() throws Exception {
         D2TxtFile.constructTxtFiles("./d2111");
@@ -154,11 +154,14 @@ public class D2CharacterTest {
         assertEquals("bowazon", d2Character.getCharName());
         assertEquals("Amazon", d2Character.getCharClass());
         assertTrue(d2Character.isItemsIncomplete());
-        assertTrue(d2Character.getItemsIncompleteReason().contains("Item 115 of 233 failed to parse"));
+        assertTrue(d2Character.getItemsIncompleteReason().contains("Mercenary item 1 of 9 failed to parse"));
+        assertTrue(d2Character.getItemsIncompleteReason().contains("all 233 character items loaded fine"));
 
-        // Everything up to the failure is still real, decoded data, not a truncated/empty list.
+        // All 233 player items load now, not just everything before the old jewel gap (232 here,
+        // not 233: getItemList() excludes the one item on the character's cursor, which the
+        // 233-item count in the incomplete-reason text above includes).
         List<D2Item> items = d2Character.getItemList();
-        assertEquals(114, items.size());
+        assertEquals(232, items.size());
         assertTrue(items.stream().anyMatch(i -> i.getItemName().contains("Autumn Facet")));
 
         Exception saveException = org.junit.jupiter.api.Assertions.assertThrows(
@@ -167,8 +170,8 @@ public class D2CharacterTest {
     }
 
     // A second snapshot of the same character (after the player added two more unique jewels --
-    // "Rime Facet" and a third, lightning one -- to chase the gap above) found two more real,
-    // fixable bugs along the way, both confirmed independently of the still-open jewel gap:
+    // "Rime Facet" and "Thunder Facet" -- to chase the gap above) found two more real, fixable
+    // bugs along the way, both confirmed independently of the elemental-Facet gap:
     //   - D2Item.readExtend()'s "rvl" (Full Rejuvenation Potion) fix: confirmed by brute-force
     //     scanning the raw bytes for a valid next item at every bit offset near the boundary --
     //     exactly 8 bits, in both this file and bowazon.d2s, was the only amount that produced a
@@ -177,8 +180,14 @@ public class D2CharacterTest {
     //     (pl_maxdamage_percent, on "Collin's Lesser Might") has only one value where this branch
     //     previously always assumed two, throwing ArrayIndexOutOfBoundsException whenever an item
     //     with that stat was rendered -- a real crash, not a parsing issue.
-    // This file still hits the open jewel gap eventually (now at "Rime Facet", 30 items further
-    // in than before the two fixes above), covered by the same partial-load fallback.
+    // With the elemental-Facet fix, this file's full 173-item player inventory now loads too --
+    // including "Sadira", a unique bow whose first socket holds a second, independent Rime Facet,
+    // which proved the fix needed a second half: D2Item's socket-recursion loop must NOT also add
+    // its usual one-extra-byte-per-socket skip after a socketed Facet, since the Facet's own
+    // 48-bit skip already covers it (confirmed the same way as the rest of this fix -- adding
+    // both skips broke the very next socket, a Shael Rune, which only decoded correctly with no
+    // extra skip at all after the Facet). Like bowazon.d2s above, the character is still reported
+    // incomplete only because of the same separate, not-yet-fixed mercenary-item bug.
     @Test
     public void secondSnapshotOfAmazonCharacterConfirmsTwoMoreRealFixes() throws Exception {
         D2TxtFile.constructTxtFiles("./d2111");
@@ -187,10 +196,13 @@ public class D2CharacterTest {
 
         assertEquals("bowazon", d2Character.getCharName());
         assertTrue(d2Character.isItemsIncomplete());
-        assertTrue(d2Character.getItemsIncompleteReason().contains("Item 168 of 173 failed to parse"));
+        assertTrue(d2Character.getItemsIncompleteReason().contains("Mercenary item 1 of 9 failed to parse"));
+        assertTrue(d2Character.getItemsIncompleteReason().contains("all 173 character items loaded fine"));
 
+        // 172 here, not 173: getItemList() excludes the one item on the character's cursor (see
+        // the bowazon.d2s test above for the same distinction).
         List<D2Item> items = d2Character.getItemList();
-        assertEquals(166, items.size());
+        assertEquals(172, items.size());
         // Confirms the rvl fix: without it, this item (right after the Full Rejuvenation
         // Potion) was unreachable -- parsing broke down before ever getting here.
         assertTrue(items.stream().anyMatch(i -> "Power of Ice".equals(i.getItemName())));
@@ -203,6 +215,21 @@ public class D2CharacterTest {
         assertEquals(-40, findPropValue(collins, 364)[0]); // pl_maxdamage_percent
         assertEquals(-40, findPropValue(collins, 365)[0]); // pl_mindamage_percent
         D2ItemRenderer.itemDump(collins, true); // must not throw
+
+        // Confirms the socketed-Facet half of the fix: Sadira's first socket is a second, real
+        // Rime Facet (distinct from the unsocketed one already asserted to exist via
+        // findPropValue-style checks elsewhere), and decoding it correctly is what lets the
+        // three Shael Runes after it in the same sockets list decode correctly too.
+        D2Item sadira = items.stream()
+                .filter(i -> "Sadira".equals(i.getItemName()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("Sadira not found"));
+        List<D2Item> sadiraSockets = sadira.getiSocketedItems();
+        assertEquals(4, sadiraSockets.size());
+        assertTrue(sadiraSockets.get(0).getItemName().contains("Rime Facet"));
+        assertTrue(sadiraSockets.get(1).getItemName().contains("Shael Rune"));
+        assertTrue(sadiraSockets.get(2).getItemName().contains("Shael Rune"));
+        assertTrue(sadiraSockets.get(3).getItemName().contains("Shael Rune"));
     }
 
     // Socketed runes' getItemName() includes embedded color-code markup and the "(#N)" rune

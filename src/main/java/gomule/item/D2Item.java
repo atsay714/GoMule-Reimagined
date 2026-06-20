@@ -153,6 +153,8 @@ public class D2Item implements Comparable, D2ItemInterface {
 
     private short set_id;
 
+    private short unique_id = -1;
+
     private final HuffmanLookupTable huffmanLookupTable = HuffmanLookupTable.withStandardDictionary();
 
     // The .d2s/.d2i item-format gained an extra bit before the magical property list (and
@@ -171,6 +173,14 @@ public class D2Item implements Comparable, D2ItemInterface {
 
     private static boolean usesPostV99ItemFormat() {
         return sFormatVersion > 99;
+    }
+
+    // The 8 "elemental Facet" unique jewels: uniqueitems.txt IDs 392-399 (Spring/Winter/Summer/
+    // Autumn/Thunder/Rime/Burnt/Toxic Facet). See the two call sites for what's empirically known
+    // about why these need special handling. Not to be confused with the unrelated gem-quality
+    // "Facet" family (uniqueitems.txt IDs ~1389-1398), which has not been shown to need this.
+    private boolean isElementalFacet() {
+        return iUnique && unique_id >= 392 && unique_id <= 399;
     }
 
     public D2Item(String pFileName, D2BitReader pFile, long pCharLvl)
@@ -417,7 +427,13 @@ public class D2Item implements Comparable, D2ItemInterface {
                 // (Pul+Hel+El = "Love"): without this skip, the first socketed rune decoded
                 // correctly but every rune after it read as garbage; with it, all three rune
                 // names and the ~20 items that follow in the same file decode correctly.
-                if (usesPostV99ItemFormat()) {
+                // Elemental Facets (isElementalFacet()) are the one exception: a socketed Facet's
+                // own 48-bit trailing skip (this file's other isElementalFacet() call site)
+                // already covers this byte -- confirmed against a real character (a "Sadira"
+                // unique bow with a Rime Facet in its first socket): adding this byte on top of
+                // the 48 broke the next socket (a Shael Rune), which only decoded correctly with
+                // no extra skip at all after the Facet.
+                if (usesPostV99ItemFormat() && !lSocket.isElementalFacet()) {
                     pFile.skipBits(8);
                 }
                 iSocketedItems.add(lSocket);
@@ -497,6 +513,15 @@ public class D2Item implements Comparable, D2ItemInterface {
         // What this byte actually holds is still unknown.
         if ("rvl".equals(item_type) && usesPostV99ItemFormat()) {
             pFile.skipBits(8);
+        }
+        // Elemental Facets (see isElementalFacet()) each carry exactly 48 extra trailing bits
+        // that nothing above reads -- confirmed in the current (post-v99) format via three
+        // independent real characters (Autumn, Rime and Thunder Facet, each appearing both
+        // unsocketed and as a socketed sub-item), every time by confirming the very next item
+        // decodes correctly afterward. What those 48 bits actually hold is still unknown. See
+        // the socket-recursion loop's comment (this file) for the other half of this fix.
+        if (isElementalFacet() && usesPostV99ItemFormat()) {
+            pFile.skipBits(48);
         }
     }
 
@@ -639,7 +664,7 @@ public class D2Item implements Comparable, D2ItemInterface {
             }
             case 7: {
                 iUnique = true;
-                short unique_id = (short) pFile.read(12);
+                unique_id = (short) pFile.read(12);
                 String s = iItemType.get("uniqueinvfile");
                 if (s.compareTo("") != 0) {
                     image_file = s;
