@@ -495,7 +495,15 @@ public class D2ViewChar extends JInternalFrame implements D2ItemContainer, D2Ite
             }
 
             itemListChanged();
-            iMessage.setText("Character loaded");
+            if (iCharacter.isItemsIncomplete()) {
+                // Items loaded up to the point of failure are still shown (see
+                // D2Character.isItemsIncomplete()'s comment) -- saving is refused separately, in
+                // D2Character.saveInternal(), so this is purely informational.
+                iMessage.setText("Character loaded PARTIALLY -- saving is disabled. "
+                        + iCharacter.getItemsIncompleteReason());
+            } else {
+                iMessage.setText("Character loaded");
+            }
         } catch (Exception pEx) {
             disconnect(pEx);
             pEx.printStackTrace();
@@ -512,7 +520,7 @@ public class D2ViewChar extends JInternalFrame implements D2ItemContainer, D2Ite
         String lText = "Character disconnected";
 
         if (pEx != null) {
-            lText += "\n";
+            lText += ": " + pEx + "\n";
             StackTraceElement trace[] = pEx.getStackTrace();
             for (int i = 0; i < trace.length; i++) {
                 lText += "\tat " + trace[i] + "\n";
@@ -2134,6 +2142,19 @@ public class D2ViewChar extends JInternalFrame implements D2ItemContainer, D2Ite
 //				cClass = "ass";
                     break;
 
+                default:
+                    // No hand-tuned background art exists for this class (e.g. a class
+                    // added by a mod after this was written). Use a plain placeholder
+                    // sized to match the hand-painted backgrounds (284x383) instead of
+                    // leaving lEmptyBackground null, which would NPE on the next line.
+                    java.awt.image.BufferedImage lPlaceholder =
+                            new java.awt.image.BufferedImage(284, 383, java.awt.image.BufferedImage.TYPE_INT_RGB);
+                    Graphics2D lPlaceholderGraphics = lPlaceholder.createGraphics();
+                    lPlaceholderGraphics.setColor(java.awt.Color.DARK_GRAY);
+                    lPlaceholderGraphics.fillRect(0, 0, 284, 383);
+                    lPlaceholderGraphics.dispose();
+                    lEmptyBackground = lPlaceholder;
+                    break;
 
             }
 

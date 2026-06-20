@@ -2,12 +2,25 @@ package gomule.item;
 
 import com.google.common.io.BaseEncoding;
 import gomule.util.D2BitReader;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import randall.d2files.D2TxtFile;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class D2ItemTest {
+
+    // The fixed byte arrays in this file were all captured from pre-version-100 saves (see
+    // D2Item.setFormatVersion()'s comment for what changed in later versions). D2Item.readExtend2
+    // tracks the source file's version via a static field set by D2Character/D2SharedStashReader
+    // before they construct any items -- since this test constructs D2Item directly with no such
+    // caller, it must set this explicitly, or it would silently inherit whatever version a
+    // different test class left behind (real failure mode this once caused: every test below
+    // broke when run after a test that set the version to 105).
+    @BeforeEach
+    public void resetItemFormatVersion() {
+        D2Item.setFormatVersion(99);
+    }
 
     public static final byte[] HEALTH_POT = new byte[]{16, 4, -96, 8, 21, 0, 0, 79, -76, 0};
     public static final byte[] SMALL_CHARM = new byte[]{16, 0, -128, 0, 5, 36, 68, -40, 79, -40, -114, -124, 14, 11, 80, -80, 12, 0, -76, 120, -10, 31};
@@ -364,7 +377,7 @@ public class D2ItemTest {
                 + "Ber Rune (#30)\n"
                 + "Required Level: 63\n"
                 + "Version: Resurrected\n"
-                + "Weapons: 20% Chance of Crushing Blow\n"
+                + "Weapons: 10% Chance of Crushing Blow\n"
                 + "Armor: Damage Reduced by 8%\n"
                 + "Shields: Damage Reduced by 8%\n"
                 + "\n"

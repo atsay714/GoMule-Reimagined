@@ -125,6 +125,8 @@ public final class D2TxtFile {
                 return "Druid";
             case 6:
                 return "Assassin";
+            case 7:
+                return "Warlock";
         }
         return "<none>";
     }

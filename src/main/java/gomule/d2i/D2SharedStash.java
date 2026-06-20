@@ -30,6 +30,23 @@ public class D2SharedStash extends D2ItemListAdapter {
         return panes;
     }
 
+    // Mirrors D2Character's isItemsIncomplete()/getItemsIncompleteReason(): a real shared stash
+    // can have a tab (or part of one) that fails to parse -- e.g. a "rune/gem" tab whose contents
+    // turned out not to be stored as regular items at all, just one real example so far -- and
+    // there's no reliable way to resync mid-pane once that happens (see D2Character's own comment
+    // for why). Every other pane, and everything read in the failing pane before the failure,
+    // is kept and shown instead of losing the whole stash; saving is refused (saveInternal()).
+    public boolean isItemsIncomplete() {
+        return panes.stream().anyMatch(D2SharedStashPane::isIncomplete);
+    }
+
+    public String getItemsIncompleteReason() {
+        return panes.stream()
+                .filter(D2SharedStashPane::isIncomplete)
+                .map(D2SharedStashPane::getIncompleteReason)
+                .collect(Collectors.joining("; "));
+    }
+
     @Override
     public boolean containsItem(D2Item pItem) {
         return panes.stream().anyMatch(it -> it.items.contains(pItem));
@@ -84,6 +101,10 @@ public class D2SharedStash extends D2ItemListAdapter {
 
     @Override
     protected void saveInternal(D2Project d2Project) {
+        if (isItemsIncomplete()) {
+            throw new RuntimeException(
+                    "Cannot save " + iFileName + ": its item list did not fully load (" + getItemsIncompleteReason() + ")");
+        }
         if (d2Project != null) D2Backup.backup(d2Project, iFileName, new D2BitReader(originalContent.clone()));
         sharedStashWriter.write(this);
         setModified(false);
@@ -97,15 +118,32 @@ public class D2SharedStash extends D2ItemListAdapter {
         private final List<D2Item> items;
         private final D2Item[][] paneGrid;
         private final int gold;
+        private final String incompleteReason;
 
-        D2SharedStashPane(List<D2Item> items, D2Item[][] paneGrid, int gold) {
+        D2SharedStashPane(List<D2Item> items, D2Item[][] paneGrid, int gold, String incompleteReason) {
             this.items = items;
             this.paneGrid = paneGrid;
             this.gold = gold;
+            this.incompleteReason = incompleteReason;
         }
 
         public static D2SharedStashPane fromItems(List<D2Item> items, int gold) {
-            return new D2SharedStashPane(items, constructPaneGrid(items), gold);
+            return new D2SharedStashPane(items, constructPaneGrid(items), gold, null);
+        }
+
+        // Used when this pane's item list didn't fully parse -- see D2SharedStashReader's comment
+        // for why a failure partway through can't be resynced, only stopped at. Everything read
+        // before the failure is kept, same as D2Character's per-item partial load.
+        public static D2SharedStashPane fromItemsPartial(List<D2Item> items, int gold, String incompleteReason) {
+            return new D2SharedStashPane(items, constructPaneGrid(items), gold, incompleteReason);
+        }
+
+        public boolean isIncomplete() {
+            return incompleteReason != null;
+        }
+
+        public String getIncompleteReason() {
+            return incompleteReason;
         }
 
         private static D2Item[][] constructPaneGrid(List<D2Item> items) {
@@ -177,13 +215,16 @@ public class D2SharedStash extends D2ItemListAdapter {
             item.setCharLvl(75);
             List<D2Item> items = new ArrayList<>(this.items);
             items.add(item);
-            return D2SharedStashPane.fromItems(items, gold);
+            // Preserves incompleteReason (rather than going through fromItems(), which would
+            // reset it to "complete") -- editing a pane that didn't fully load doesn't make the
+            // part that failed to load any more loaded.
+            return new D2SharedStashPane(items, constructPaneGrid(items), gold, incompleteReason);
         }
 
         public D2SharedStashPane removeItem(D2Item item) {
             List<D2Item> items = new ArrayList<>(this.items);
             items.remove(item);
-            return D2SharedStashPane.fromItems(items, gold);
+            return new D2SharedStashPane(items, constructPaneGrid(items), gold, incompleteReason);
         }
     }
 

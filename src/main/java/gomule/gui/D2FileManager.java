@@ -1382,7 +1382,7 @@ public class D2FileManager extends JFrame {
             //			String[] fNamesOut = new String[lCharChooser.getSelectedFiles().length];
             for (int x = 0; x < lCharChooser.getSelectedFiles().length; x = x + 1) {
                 java.io.File lFile = lCharChooser.getSelectedFiles()[x];
-                if (!canReadWrite(lFile)) {
+                if (!canRead(lFile)) {
                     D2FileManager.displayErrorDialog(new Exception(
                             "Access denied to file, please move it to a location that GoMule can access"));
                     return;
@@ -1558,7 +1558,10 @@ public class D2FileManager extends JFrame {
         for (int x = 0; x < stashList.length; x = x + 1) {
             System.out.println(stashList.length);
             java.io.File lFile = stashList[x];
-            if ((lFile.exists() && !canReadWrite(lFile)) || (!lFile.exists() && !canReadWrite(lFile.getParentFile()))) {
+            // An existing stash only needs to be opened (read); a new one (typed in but not yet
+            // on disk) is about to be created, so its parent directory genuinely needs to be
+            // writable -- that check is kept as-is, unlike the read-only one above.
+            if ((lFile.exists() && !canRead(lFile)) || (!lFile.exists() && !canWrite(lFile.getParentFile()))) {
                 D2FileManager.displayErrorDialog(
                         new Exception("Access denied to file, please move it to a location that GoMule can access"));
                 return new String[0];
@@ -1580,8 +1583,21 @@ public class D2FileManager extends JFrame {
         return fNamesOut;
     }
 
-    private boolean canReadWrite(File lFile) {
-        return Files.isWritable(lFile.toPath()) && Files.isReadable(lFile.toPath());
+    // Used when OPENING a file (to view it), not when saving one -- opening only needs read
+    // access. This used to also require Files.isWritable(), but that check is unreliable over
+    // network/UNC paths on Windows: it performs a native ACL lookup that frequently comes back
+    // false for files that are actually both readable and writable, blocking users from even
+    // opening (let alone editing) a character stored on a network drive. A save that genuinely
+    // can't write back will still fail with its own, more specific I/O error at save time.
+    private boolean canRead(File lFile) {
+        return Files.isReadable(lFile.toPath());
+    }
+
+    // Used only when a new file is about to be created (e.g. a stash typed into the file
+    // chooser that doesn't exist yet) -- there, write access genuinely is required up front,
+    // unlike opening an existing file above.
+    private boolean canWrite(File lFile) {
+        return Files.isWritable(lFile.toPath());
     }
 
     public void openStash(String pStashName, boolean load) {
@@ -1621,7 +1637,7 @@ public class D2FileManager extends JFrame {
         for (int x = 0; x < stashList.length; x = x + 1) {
             System.out.println(stashList.length);
             java.io.File lFile = stashList[x];
-            if (!canReadWrite(lFile)) {
+            if (!canRead(lFile)) {
                 D2FileManager.displayErrorDialog(
                         new Exception("Access denied to file, please move it to a location that GoMule can access"));
                 return new String[0];

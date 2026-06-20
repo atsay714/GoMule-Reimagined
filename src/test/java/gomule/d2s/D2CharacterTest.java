@@ -1,16 +1,28 @@
 package gomule.d2s;
 
 import com.google.common.io.Resources;
+import gomule.item.D2Item;
+import gomule.item.D2ItemRenderer;
 import org.junit.jupiter.api.Test;
 import randall.d2files.D2TxtFile;
 
 import java.io.File;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SuppressWarnings("UnstableApiUsage")
 public class D2CharacterTest {
 
+    // KNOWN ISSUE (not yet fixed): this test is disabled because parsing complexChar.d2s currently
+    // throws gomule.util.D2ItemException: "Error: For input string: """  when it reaches
+    // "Titan's Revenge".  Root cause: the v3.0.10 itemstatcost.txt sync left 105 stat rows with
+    // an empty "Save Bits" column; D2PropCollection.readProp calls Integer.parseInt on that empty
+    // string and crashes.  Fix requires either patching the fixture or handling empty Save Bits
+    // gracefully in D2PropCollection.readProp.
 //    @Test
 //    public void complexChar() throws Exception {
 //        D2TxtFile.constructTxtFiles("./d2111");
@@ -18,913 +30,322 @@ public class D2CharacterTest {
 //        assertEquals(expectedComplexChar, d2Character.fullDumpStr().replaceAll("\r", ""));
 //    }
 
-    private String expectedComplexChar = "Name:       ThePerfectJava\n" + "Class:      Amazon\n"
-            + "Experience: 3232620645\n"
-            + "Level:      98\n"
-            + "\n"
-            + "            Naked/Gear\n"
-            + "Strength:   61/173\n"
-            + "Dexterity:  162/220\n"
-            + "Vitality:   342/367\n"
-            + "Energy:     15/20\n"
-            + "HP:         1272/1354\n"
-            + "Mana:       158/218\n"
-            + "Stamina:    496/676\n"
-            + "Defense:    40/1914\n"
-            + "AR:         780/1261\n"
-            + "\n"
-            + "Fire:       179/139/79\n"
-            + "Cold:       181/141/81\n"
-            + "Lightning:  187/147/87\n"
-            + "Poison:     177/137/77\n"
-            + "\n"
-            + "MF:         48       Block:      75\n"
-            + "GF:         0       FR/W:       70\n"
-            + "FHR:        24       IAS:        20\n"
-            + "FCR:        25\n"
-            + "\n"
-            + "Magic Arrow: 0/0\n"
-            + "Fire Arrow: 0/0\n"
-            + "Cold Arrow: 0/0\n"
-            + "Multiple Shot: 0/0\n"
-            + "Exploding Arrow: 0/0\n"
-            + "Ice Arrow: 0/0\n"
-            + "Guided Arrow: 0/0\n"
-            + "Strafe: 0/0\n"
-            + "Immolation Arrow: 0/0\n"
-            + "Freezing Arrow: 0/0\n"
-            + "\n"
-            + "Inner Sight: 0/0\n"
-            + "Critical Strike: 1/9\n"
-            + "Dodge: 1/9\n"
-            + "Slow Missiles: 0/0\n"
-            + "Avoid: 1/9\n"
-            + "Penetrate: 1/9\n"
-            + "Decoy: 0/0\n"
-            + "Evade: 1/9\n"
-            + "Valkyrie: 0/0\n"
-            + "Pierce: 1/9\n"
-            + "\n"
-            + "Jab: 1/23\n"
-            + "Power Strike: 20/42\n"
-            + "Poison Javelin: 1/23\n"
-            + "Impale: 0/0\n"
-            + "Lightning Bolt: 20/42\n"
-            + "Charged Strike: 20/42\n"
-            + "Plague Javelin: 1/23\n"
-            + "Fend: 0/0\n"
-            + "Lightning Strike: 20/45\n"
-            + "Lightning Fury: 20/45\n"
-            + "\n"
-            + "Viridian Small Charm\n"
-            + "Small Charm\n"
-            + "Required Level: 10\n"
-            + "Fingerprint: 0x61d091db\n"
-            + "Item Level: 1\n"
-            + "Version: Resurrected\n"
-            + "Poison Resist +7%\n"
-            + "\n"
-            + "Emerald Small Charm\n"
-            + "Small Charm\n"
-            + "Required Level: 32\n"
-            + "Fingerprint: 0xe7a2403f\n"
-            + "Item Level: 88\n"
-            + "Version: Resurrected\n"
-            + "Poison Resist +10%\n"
-            + "\n"
-            + "Crimson Small Charm of Life\n"
-            + "Small Charm\n"
-            + "Required Level: 14\n"
-            + "Fingerprint: 0xc1636060\n"
-            + "Item Level: 22\n"
-            + "Version: Resurrected\n"
-            + "+9 to Life\n"
-            + "Fire Resist +5%\n"
-            + "\n"
-            + "Titan's Revenge\n"
-            + "Ceremonial Javelin\n"
-            + "Throw Damage: 74 - 197\n"
-            + "One Hand Damage: 74 - 145\n"
-            + "Quantity: 143\n"
-            + "Required Level: 42\n"
-            + "Required Strength: 25\n"
-            + "Required Dexterity: 109\n"
-            + "Fingerprint: 0xdfa76564\n"
-            + "Item Level: 87\n"
-            + "Version: Resurrected\n"
-            + "+2 to Javelin and Spear Skills (Amazon Only)\n"
-            + "+2 to Amazon Skill Levels\n"
-            + "+30% Faster Run/Walk\n"
-            + "173% Enhanced Damage\n"
-            + "Adds 25 - 50 Damage\n"
-            + "9% Life stolen per hit\n"
-            + "+20 to Strength\n"
-            + "+20 to Dexterity\n"
-            + "Increased Stack Size\n"
-            + "Replenishes quantity\n"
-            + "\n"
-            + "Harpoonist's Grand Charm of Maiming\n"
-            + "Grand Charm\n"
-            + "Required Level: 63\n"
-            + "Fingerprint: 0x9256fa58\n"
-            + "Item Level: 85\n"
-            + "Version: Resurrected\n"
-            + "+1 to Javelin and Spear Skills (Amazon Only)\n"
-            + "+3 to Maximum Damage\n"
-            + "\n"
-            + "Russet Grand Charm of Sustenance\n"
-            + "Grand Charm\n"
-            + "Required Level: 23\n"
-            + "Fingerprint: 0xe4e9333d\n"
-            + "Item Level: 69\n"
-            + "Version: Resurrected\n"
-            + "+24 to Life\n"
-            + "Fire Resist +16%\n"
-            + "\n"
-            + "Viridian Small Charm\n"
-            + "Small Charm\n"
-            + "Required Level: 10\n"
-            + "Fingerprint: 0xe1dd3a1e\n"
-            + "Item Level: 88\n"
-            + "Version: Resurrected\n"
-            + "Poison Resist +6%\n"
-            + "\n"
-            + "Emerald Small Charm of the Glacier\n"
-            + "Small Charm\n"
-            + "Required Level: 32\n"
-            + "Fingerprint: 0xba6b6fae\n"
-            + "Item Level: 85\n"
-            + "Version: Resurrected\n"
-            + "Adds 3 - 6 Cold Damage Over 1 Secs (25 Frames)\n"
-            + "Poison Resist +11%\n"
-            + "\n"
-            + "Emerald Small Charm of Storms\n"
-            + "Small Charm\n"
-            + "Required Level: 37\n"
-            + "Fingerprint: 0x4bd6750d\n"
-            + "Item Level: 66\n"
-            + "Version: Resurrected\n"
-            + "Adds 1 - 20 Lightning Damage\n"
-            + "Poison Resist +11%\n"
-            + "\n"
-            + "Emerald Small Charm of Dexterity\n"
-            + "Small Charm\n"
-            + "Required Level: 32\n"
-            + "Fingerprint: 0x2099a50e\n"
-            + "Item Level: 88\n"
-            + "Version: Resurrected\n"
-            + "+1 to Dexterity\n"
-            + "Poison Resist +11%\n"
-            + "\n"
-            + "Crimson Small Charm\n"
-            + "Small Charm\n"
-            + "Required Level: 1\n"
-            + "Fingerprint: 0xfb404e24\n"
-            + "Item Level: 73\n"
-            + "Version: Resurrected\n"
-            + "Fire Resist +3%\n"
-            + "\n"
-            + "Viridian Small Charm\n"
-            + "Small Charm\n"
-            + "Required Level: 10\n"
-            + "Fingerprint: 0x2378cd91\n"
-            + "Item Level: 5\n"
-            + "Version: Resurrected\n"
-            + "Poison Resist +7%\n"
-            + "\n"
-            + "Viridian Small Charm\n"
-            + "Small Charm\n"
-            + "Required Level: 10\n"
-            + "Fingerprint: 0x9bce0b62\n"
-            + "Item Level: 7\n"
-            + "Version: Resurrected\n"
-            + "Poison Resist +7%\n"
-            + "\n"
-            + "Emerald Small Charm\n"
-            + "Small Charm\n"
-            + "Required Level: 32\n"
-            + "Fingerprint: 0xaa284445\n"
-            + "Item Level: 80\n"
-            + "Version: Resurrected\n"
-            + "Poison Resist +11%\n"
-            + "\n"
-            + "Crimson Small Charm\n"
-            + "Small Charm\n"
-            + "Required Level: 1\n"
-            + "Fingerprint: 0xbb6b812a\n"
-            + "Item Level: 85\n"
-            + "Version: Resurrected\n"
-            + "Fire Resist +5%\n"
-            + "\n"
-            + "Sapphire Small Charm of Dexterity\n"
-            + "Small Charm\n"
-            + "Required Level: 32\n"
-            + "Fingerprint: 0x85e8d8d3\n"
-            + "Item Level: 86\n"
-            + "Version: Resurrected\n"
-            + "+1 to Dexterity\n"
-            + "Cold Resist +11%\n"
-            + "\n"
-            + "Sapphire Small Charm\n"
-            + "Small Charm\n"
-            + "Required Level: 32\n"
-            + "Fingerprint: 0xada3471e\n"
-            + "Item Level: 88\n"
-            + "Version: Resurrected\n"
-            + "Cold Resist +10%\n"
-            + "\n"
-            + "Sapphire Small Charm\n"
-            + "Small Charm\n"
-            + "Required Level: 32\n"
-            + "Fingerprint: 0x2c3323d1\n"
-            + "Item Level: 88\n"
-            + "Version: Resurrected\n"
-            + "Cold Resist +10%\n"
-            + "\n"
-            + "Harpoonist's Grand Charm of Craftmanship\n"
-            + "Grand Charm\n"
-            + "Required Level: 42\n"
-            + "Fingerprint: 0x83b4c80d\n"
-            + "Item Level: 85\n"
-            + "Version: Resurrected\n"
-            + "+1 to Javelin and Spear Skills (Amazon Only)\n"
-            + "+1 to Maximum Damage\n"
-            + "\n"
-            + "Harpoonist's Grand Charm of Balance\n"
-            + "Grand Charm\n"
-            + "Required Level: 42\n"
-            + "Fingerprint: 0xc5261c1b\n"
-            + "Item Level: 99\n"
-            + "Version: Resurrected\n"
-            + "+1 to Javelin and Spear Skills (Amazon Only)\n"
-            + "+12% Faster Hit Recovery\n"
-            + "\n"
-            + "Amber Small Charm of Dexterity\n"
-            + "Small Charm\n"
-            + "Required Level: 32\n"
-            + "Fingerprint: 0x4115290\n"
-            + "Item Level: 85\n"
-            + "Version: Resurrected\n"
-            + "+2 to Dexterity\n"
-            + "Lightning Resist +11%\n"
-            + "\n"
-            + "Amber Small Charm of Balance\n"
-            + "Small Charm\n"
-            + "Required Level: 32\n"
-            + "Fingerprint: 0xa627a9a4\n"
-            + "Item Level: 85\n"
-            + "Version: Resurrected\n"
-            + "+5% Faster Hit Recovery\n"
-            + "Lightning Resist +11%\n"
-            + "\n"
-            + "Harpoonist's Grand Charm of Dexterity\n"
-            + "Grand Charm\n"
-            + "Required Level: 42\n"
-            + "Fingerprint: 0xf15c64eb\n"
-            + "Item Level: 85\n"
-            + "Version: Resurrected\n"
-            + "+1 to Javelin and Spear Skills (Amazon Only)\n"
-            + "+4 to Dexterity\n"
-            + "\n"
-            + "Harpoonist's Grand Charm of Strength\n"
-            + "Grand Charm\n"
-            + "Required Level: 42\n"
-            + "Fingerprint: 0x6aefa918\n"
-            + "Item Level: 85\n"
-            + "Version: Resurrected\n"
-            + "+1 to Javelin and Spear Skills (Amazon Only)\n"
-            + "+5 to Strength\n"
-            + "\n"
-            + "Amber Small Charm of Strength\n"
-            + "Small Charm\n"
-            + "Required Level: 32\n"
-            + "Fingerprint: 0xe16d4cd6\n"
-            + "Item Level: 80\n"
-            + "Version: Resurrected\n"
-            + "+1 to Strength\n"
-            + "Lightning Resist +10%\n"
-            + "\n"
-            + "Harpoonist's Grand Charm of Strength\n"
-            + "Grand Charm\n"
-            + "Required Level: 42\n"
-            + "Fingerprint: 0x40eb581d\n"
-            + "Item Level: 85\n"
-            + "Version: Resurrected\n"
-            + "+1 to Javelin and Spear Skills (Amazon Only)\n"
-            + "+5 to Strength\n"
-            + "\n"
-            + "Harpoonist's Grand Charm of Strength\n"
-            + "Grand Charm\n"
-            + "Required Level: 42\n"
-            + "Fingerprint: 0x25db1c2a\n"
-            + "Item Level: 85\n"
-            + "Version: Resurrected\n"
-            + "+1 to Javelin and Spear Skills (Amazon Only)\n"
-            + "+4 to Strength\n"
-            + "\n"
-            + "Amber Small Charm of Strength\n"
-            + "Small Charm\n"
-            + "Required Level: 32\n"
-            + "Fingerprint: 0xb790b4c1\n"
-            + "Item Level: 88\n"
-            + "Version: Resurrected\n"
-            + "+2 to Strength\n"
-            + "Lightning Resist +10%\n"
-            + "\n"
-            + "Amber Small Charm of Flame\n"
-            + "Small Charm\n"
-            + "Required Level: 32\n"
-            + "Fingerprint: 0xed06d3ce\n"
-            + "Item Level: 88\n"
-            + "Version: Resurrected\n"
-            + "Adds 1 - 2 Fire Damage\n"
-            + "Lightning Resist +10%\n"
-            + "\n"
-            + "Small Charm of Good Luck\n"
-            + "Small Charm\n"
-            + "Required Level: 33\n"
-            + "Fingerprint: 0xf835c91b\n"
-            + "Item Level: 67\n"
-            + "Version: Resurrected\n"
-            + "7% Better Chance of Getting Magic Items\n"
-            + "\n"
-            + "Mara's Kaleidoscope\n"
-            + "Amulet\n"
-            + "Required Level: 67\n"
-            + "Fingerprint: 0x68fe8447\n"
-            + "Item Level: 87\n"
-            + "Version: Resurrected\n"
-            + "+2 to All Skills\n"
-            + "All Stats +5\n"
-            + "All Resistances +26\n"
-            + "\n"
-            + "Raven Frost\n"
-            + "Ring\n"
-            + "Required Level: 45\n"
-            + "Fingerprint: 0x52eaf57b\n"
-            + "Item Level: 90\n"
-            + "Version: Resurrected\n"
-            + "+191 to Attack Rating\n"
-            + "Adds 15 - 45 Cold Damage Over 4 Secs (100 Frames)\n"
-            + "+20 to Dexterity\n"
-            + "+40 to Mana\n"
-            + "+20 Cold Absorb\n"
-            + "Cannot Be Frozen\n"
-            + "\n"
-            + "The Stone of Jordan\n"
-            + "Ring\n"
-            + "Required Level: 29\n"
-            + "Fingerprint: 0x10ac91b9\n"
-            + "Item Level: 99\n"
-            + "Version: Resurrected\n"
-            + "+1 to All Skills\n"
-            + "Adds 1 - 12 Lightning Damage\n"
-            + "+20 to Mana\n"
-            + "Increase Maximum Mana 25%\n"
-            + "\n"
-            + "Thundergod's Vigor\n"
-            + "War Belt\n"
-            + "Defense: 159\n"
-            + "Durability: 6 of 24\n"
-            + "Required Level: 47\n"
-            + "Required Strength: 110\n"
-            + "Fingerprint: 0x652b277b\n"
-            + "Item Level: 88\n"
-            + "Version: Resurrected\n"
-            + "5% Chance to cast level 7 Fist of the Heavens when struck\n"
-            + "Adds 1 - 50 Lightning Damage\n"
-            + "+3 to Lightning Fury (Amazon Only)\n"
-            + "+3 to Lightning Strike (Amazon Only)\n"
-            + "+200% Enhanced Defense\n"
-            + "+20 to Strength\n"
-            + "+20 to Vitality\n"
-            + "+10% to Maximum Lightning Resist\n"
-            + "Lightning Absorb 20%\n"
-            + "\n"
-            + "Aldur's Advance\n"
-            + "Battle Boots\n"
-            + "Defense: 42\n"
-            + "Durability: 11 of 18\n"
-            + "Required Level: 45\n"
-            + "Required Strength: 95\n"
-            + "Fingerprint: 0x7bc09616\n"
-            + "Item Level: 99\n"
-            + "Version: Resurrected\n"
-            + "Indestructible\n"
-            + "+40% Faster Run/Walk\n"
-            + "+50 to Life\n"
-            + "+180 Maximum Stamina\n"
-            + "Heal Stamina Plus 32%\n"
-            + "Fire Resist +44%\n"
-            + "10% Damage Taken Goes To Mana\n"
-            + "Set (2 items): +15 to Dexterity\n"
-            + "Set (3 items): +15 to Dexterity\n"
-            + "Set (4 items): +15 to Dexterity\n"
-            + "\n"
-            + "\n"
-            + "Loath Clutches\n"
-            + "Light Gauntlets\n"
-            + "Defense: 17\n"
-            + "Durability: 4 of 18\n"
-            + "Required Level: 35\n"
-            + "Required Strength: 45\n"
-            + "Fingerprint: 0xe7208e05\n"
-            + "Item Level: 55\n"
-            + "Version: Resurrected\n"
-            + "+2 to Javelin and Spear Skills (Amazon Only)\n"
-            + "+20% Increased Attack Speed\n"
-            + "3% Life stolen per hit\n"
-            + "+49% Enhanced Defense\n"
-            + "Fire Resist +14%\n"
-            + "23% Better Chance of Getting Magic Items\n"
-            + "\n"
-            + "Coral Small Charm\n"
-            + "Small Charm\n"
-            + "Required Level: 20\n"
-            + "Fingerprint: 0xf0273fb9\n"
-            + "Item Level: 86\n"
-            + "Version: Resurrected\n"
-            + "Lightning Resist +8%\n"
-            + "\n"
-            + "Crimson Small Charm of Greed\n"
-            + "Small Charm\n"
-            + "Required Level: 15\n"
-            + "Fingerprint: 0x46fdfa1e\n"
-            + "Item Level: 22\n"
-            + "Version: Resurrected\n"
-            + "Fire Resist +5%\n"
-            + "9% Extra Gold from Monsters\n"
-            + "\n"
-            + "Harpoonist's Grand Charm of Dexterity\n"
-            + "Grand Charm\n"
-            + "Required Level: 42\n"
-            + "Fingerprint: 0x5c556f34\n"
-            + "Item Level: 67\n"
-            + "Version: Resurrected\n"
-            + "+1 to Javelin and Spear Skills (Amazon Only)\n"
-            + "+6 to Dexterity\n"
-            + "\n"
-            + "Ocher Small Charm of Frost\n"
-            + "Small Charm\n"
-            + "Required Level: 10\n"
-            + "Fingerprint: 0x41fd42dd\n"
-            + "Item Level: 88\n"
-            + "Version: Resurrected\n"
-            + "Adds 1 - 2 Cold Damage Over 1 Secs (25 Frames)\n"
-            + "Lightning Resist +7%\n"
-            + "\n"
-            + "Horadric Cube\n"
-            + "Fingerprint: 0x180f812\n"
-            + "Item Level: 13\n"
-            + "Version: Resurrected\n"
-            + "\n"
-            + "Harpoonist's Grand Charm of Balance\n"
-            + "Grand Charm\n"
-            + "Required Level: 42\n"
-            + "Fingerprint: 0x2232064a\n"
-            + "Item Level: 59\n"
-            + "Version: Resurrected\n"
-            + "+1 to Javelin and Spear Skills (Amazon Only)\n"
-            + "+12% Faster Hit Recovery\n"
-            + "\n"
-            + "Harpoonist's Grand Charm of Sustenance\n"
-            + "Grand Charm\n"
-            + "Required Level: 53\n"
-            + "Fingerprint: 0x452acdf\n"
-            + "Item Level: 68\n"
-            + "Version: Resurrected\n"
-            + "+1 to Javelin and Spear Skills (Amazon Only)\n"
-            + "+32 to Life\n"
-            + "\n"
-            + "Toxic Small Charm of Inertia\n"
-            + "Small Charm\n"
-            + "Required Level: 55\n"
-            + "Fingerprint: 0xe52700c3\n"
-            + "Item Level: 85\n"
-            + "Version: Resurrected\n"
-            + "+3% Faster Run/Walk\n"
-            + "Adds 100 Poison Damage Over 5 Secs (125 Frames)\n"
-            + "\n"
-            + "Chains of Honor\n"
-            + "Archon Plate\n"
-            + "DolUmBerIst\n"
-            + "Defense: 882\n"
-            + "Durability: 15 of 60\n"
-            + "Required Level: 63\n"
-            + "Required Strength: 103\n"
-            + "Fingerprint: 0xed9dd144\n"
-            + "Item Level: 85\n"
-            + "Version: Resurrected\n"
-            + "+2 to All Skills\n"
-            + "+200% Damage to Demons\n"
-            + "+100% Damage to Undead\n"
-            + "8% Life stolen per hit\n"
-            + "+70% Enhanced Defense\n"
-            + "+20 to Strength\n"
-            + "Replenish Life +7\n"
-            + "All Resistances +65\n"
-            + "Damage Reduced by 8%\n"
-            + "25% Better Chance of Getting Magic Items\n"
-            + "4 Sockets (4 used)\n"
-            + "Socketed: Dol Rune\n"
-            + "Socketed: Um Rune\n"
-            + "Socketed: Ber Rune\n"
-            + "Socketed: Ist Rune\n"
-            + "\n"
-            + "Dol Rune\n"
-            + "Required Level: 31\n"
-            + "Version: Resurrected\n"
-            + "Weapons: Hit Causes Monster to Flee +25%\n"
-            + // TODO
-            "Armor: Replenish Life +7\n"
-            + "Shields: Replenish Life +7\n"
-            + "\n"
-            + "Um Rune\n"
-            + "Required Level: 47\n"
-            + "Version: Resurrected\n"
-            + "Weapons: 25% Chance of Open Wounds\n"
-            + "Armor: Cold Resist +15%\n"
-            + "Lightning Resist +15%\n"
-            + "Fire Resist +15%\n"
-            + "Poison Resist +15%\n"
-            + "Shields: Cold Resist +22%\n"
-            + "Lightning Resist +22%\n"
-            + "Fire Resist +22%\n"
-            + "Poison Resist +22%\n"
-            + "\n"
-            + "Ber Rune\n"
-            + "Required Level: 63\n"
-            + "Version: Resurrected\n"
-            + "Weapons: 20% Chance of Crushing Blow\n"
-            + "Armor: Damage Reduced by 8%\n"
-            + "Shields: Damage Reduced by 8%\n"
-            + "\n"
-            + "Ist Rune\n"
-            + "Required Level: 51\n"
-            + "Version: Resurrected\n"
-            + "Weapons: 30% Better Chance of Getting Magic Items\n"
-            + "Armor: 25% Better Chance of Getting Magic Items\n"
-            + "Shields: 25% Better Chance of Getting Magic Items\n"
-            + "\n"
-            + "Widowmaker\n"
-            + "Ward Bow\n"
-            + "Two Hand Damage: 53 - 142\n"
-            + "Durability: 45 of 48\n"
-            + "Required Level: 65\n"
-            + "Required Strength: 72\n"
-            + "Required Dexterity: 146\n"
-            + "Fingerprint: 0x68f39e6f\n"
-            + "Item Level: 85\n"
-            + "Version: Resurrected\n"
-            + "Fires Magic Arrows\n"
-            + "169% Enhanced Damage\n"
-            + "Ignore Target's Defense\n"
-            + "33% Deadly Strike\n"
-            + "+5 to Guided Arrow\n"
-            + "\n"
-            + "Rejuvenation Potion\n"
-            + "Version: Resurrected\n"
-            + "Replenishes Mana 35%\n"
-            + "Replenishes Health 35%\n"
-            + "\n"
-            + "Super Healing Potion\n"
-            + "Version: Resurrected\n"
-            + "Replenish Life +320\n"
-            + "\n"
-            + "Super Healing Potion\n"
-            + "Version: Resurrected\n"
-            + "Replenish Life +320\n"
-            + "\n"
-            + "Super Healing Potion\n"
-            + "Version: Resurrected\n"
-            + "Replenish Life +320\n"
-            + "\n"
-            + "Super Mana Potion\n"
-            + "Version: Resurrected\n"
-            + "Replenishes Mana 250%\n"
-            + "\n"
-            + "Call to Arms\n"
-            + "War Scepter\n"
-            + "AmnRalMalIstOhm\n"
-            + "One Hand Damage: 37 - 63\n"
-            + "Durability: 68 of 70\n"
-            + "Required Level: 57\n"
-            + "Required Strength: 55\n"
-            + "Fingerprint: 0x1baff84d\n"
-            + "GUID: 0x0 0x0 0xb75ebe57 0xa491bdb\n"
-            + "Item Level: 61\n"
-            + "Version: Resurrected\n"
-            + "+2 to All Skills\n"
-            + "+40% Increased Attack Speed\n"
-            + "273% Enhanced Damage\n"
-            + "+150% Damage to Undead\n"
-            + "Adds 5 - 30 Fire Damage\n"
-            + "7% Life stolen per hit\n"
-            + "Prevent Monster Heal\n"
-            + "+9 to Battle Command\n"
-            + "+13 to Battle Orders\n"
-            + "+10 to Battle Cry\n"
-            + "Replenish Life +12\n"
-            + "30% Better Chance of Getting Magic Items\n"
-            + "5 Sockets (5 used)\n"
-            + "Socketed: Amn Rune\n"
-            + "Socketed: Ral Rune\n"
-            + "Socketed: Mal Rune\n"
-            + "Socketed: Ist Rune\n"
-            + "Socketed: Ohm Rune\n"
-            + "\n"
-            + "Amn Rune\n"
-            + "Required Level: 25\n"
-            + "GUID: 0x0 0x0 0x5203a1ac 0x67e15e4\n"
-            + "Version: Resurrected\n"
-            + "Weapons: 7% Life stolen per hit\n"
-            + "Armor: Attacker Takes Damage of 14\n"
-            + "Shields: Attacker Takes Damage of 14\n"
-            + "\n"
-            + "Ral Rune\n"
-            + "Required Level: 19\n"
-            + "GUID: 0x0 0x0 0x66f03f8f 0x70897b7\n"
-            + "Version: Resurrected\n"
-            + "Weapons: Adds 5 - 30 Fire Damage\n"
-            + "Armor: Fire Resist +30%\n"
-            + "Shields: Fire Resist +35%\n"
-            + "\n"
-            + "Mal Rune\n"
-            + "Required Level: 49\n"
-            + "GUID: 0x0 0x0 0x810819fd 0x5f39411\n"
-            + "Version: Resurrected\n"
-            + "Weapons: Prevent Monster Heal\n"
-            + "Armor: Magic Damage Reduced by 7\n"
-            + "Shields: Magic Damage Reduced by 7\n"
-            + "\n"
-            + "Ist Rune\n"
-            + "Required Level: 51\n"
-            + "GUID: 0x0 0x0 0xddb48852 0x569123e\n"
-            + "Version: Resurrected\n"
-            + "Weapons: 30% Better Chance of Getting Magic Items\n"
-            + "Armor: 25% Better Chance of Getting Magic Items\n"
-            + "Shields: 25% Better Chance of Getting Magic Items\n"
-            + "\n"
-            + "Ohm Rune\n"
-            + "Required Level: 57\n"
-            + "Version: Resurrected\n"
-            + "Weapons: +50% Enhanced Damage\n"
-            + "Armor: +5% to Maximum Cold Resist\n"
-            + "Shields: +5% to Maximum Cold Resist\n"
-            + "\n"
-            + "Griffon's Eye\n"
-            + "Diadem\n"
-            + "Defense: 247\n"
-            + "Durability: 19 of 20\n"
-            + "Required Level: 76\n"
-            + "Fingerprint: 0x5c55218a\n"
-            + "Item Level: 86\n"
-            + "Version: Resurrected\n"
-            + "100% Chance to cast level 41 Nova when you Level-Up\n"
-            + "+1 to All Skills\n"
-            + "+25% Faster Cast Rate\n"
-            + "Adds 1 - 74 Lightning Damage\n"
-            + "-25% to Enemy Lightning Resistance\n"
-            + "+20% to Lightning Skill Damage\n"
-            + "+191 Defense\n"
-            + "1 Sockets (1 used)\n"
-            + "Socketed: Rainbow Facet\n"
-            + "\n"
-            + "Rainbow Facet\n"
-            + "Jewel\n"
-            + "Required Level: 49\n"
-            + "Fingerprint: 0x79ae2700\n"
-            + "Item Level: 99\n"
-            + "Version: Resurrected\n"
-            + "100% Chance to cast level 41 Nova when you Level-Up\n"
-            + "Adds 1 - 74 Lightning Damage\n"
-            + "-5% to Enemy Lightning Resistance\n"
-            + "+5% to Lightning Skill Damage\n"
-            + "\n"
-            + "Gemmed Circlet\n"
-            + "Circlet\n"
-            + "Defense: 25\n"
-            + "Durability: 15 of 35\n"
-            + "Required Level: 41\n"
-            + "Fingerprint: 0x589dd484\n"
-            + "Item Level: 88\n"
-            + "Version: Resurrected\n"
-            + "+20 to Strength\n"
-            + "2 Sockets (2 used)\n"
-            + "Socketed: Fal Rune\n"
-            + "Socketed: Fal Rune\n"
-            + "\n"
-            + "Fal Rune\n"
-            + "Required Level: 41\n"
-            + "Version: Resurrected\n"
-            + "Weapons: +10 to Strength\n"
-            + "Armor: +10 to Strength\n"
-            + "Shields: +10 to Strength\n"
-            + "\n"
-            + "Fal Rune\n"
-            + "Required Level: 41\n"
-            + "Version: Resurrected\n"
-            + "Weapons: +10 to Strength\n"
-            + "Armor: +10 to Strength\n"
-            + "Shields: +10 to Strength\n"
-            + "\n"
-            + "BigBoobsBigBow's Titan's Revenge\n"
-            + "Matriarchal Javelin\n"
-            + "Throw Damage: 169 - 324\n"
-            + "One Hand Damage: 149 - 274\n"
-            + "Quantity: 143\n"
-            + "Required Level: 55\n"
-            + "Required Strength: 97\n"
-            + "Required Dexterity: 141\n"
-            + "Fingerprint: 0xac444728\n"
-            + "Item Level: 87\n"
-            + "Version: Resurrected\n"
-            + "+2 to Javelin and Spear Skills (Amazon Only)\n"
-            + "+2 to Amazon Skill Levels\n"
-            + "+30% Faster Run/Walk\n"
-            + "177% Enhanced Damage\n"
-            + "Adds 25 - 50 Damage\n"
-            + "5% Life stolen per hit\n"
-            + "+20 to Strength\n"
-            + "+20 to Dexterity\n"
-            + "Increased Stack Size\n"
-            + "Replenishes quantity\n"
-            + "Required Level +7\n"
-            + "Ethereal\n"
-            + "\n"
-            + "Stormshield\n"
-            + "Monarch\n"
-            + "Defense: 512\n"
-            + "Chance to Block: 47\n"
-            + "Indestructible\n"
-            + "Required Level: 73\n"
-            + "Required Strength: 156\n"
-            + "Fingerprint: 0x3b767fa8\n"
-            + "Item Level: 99\n"
-            + "Version: Resurrected\n"
-            + "100% Chance to cast level 47 Chain Lightning when you Die\n"
-            + "Indestructible\n"
-            + "+35% Faster Block Rate\n"
-            + "25% Increased Chance of Blocking\n"
-            + "Adds 1 - 74 Lightning Damage\n"
-            + "-5% to Enemy Lightning Resistance\n"
-            + "+5% to Lightning Skill Damage\n"
-            + "+367 Defense (Based on Character Level)\n"
-            + "+30 to Strength\n"
-            + "Cold Resist +60%\n"
-            + "Lightning Resist +25%\n"
-            + "Damage Reduced by 35%\n"
-            + "Attacker Takes Lightning Damage of 10\n"
-            + "1 Sockets (1 used)\n"
-            + "Socketed: Rainbow Facet\n"
-            + "\n"
-            + "Rainbow Facet\n"
-            + "Jewel\n"
-            + "Required Level: 49\n"
-            + "Fingerprint: 0xf74a9abf\n"
-            + "Item Level: 87\n"
-            + "Version: Resurrected\n"
-            + "100% Chance to cast level 47 Chain Lightning when you Die\n"
-            + "Adds 1 - 74 Lightning Damage\n"
-            + "-5% to Enemy Lightning Resistance\n"
-            + "+5% to Lightning Skill Damage\n"
-            + "\n"
-            + "Mercenary:\n"
-            + "\n"
-            + "Name:       Razan\n"
-            + "Race:       Desert Mercenary\n"
-            + "Type:       HolyFreeze-Nightmare\n"
-            + "Experience: 107329840\n"
-            + "Level:      96\n"
-            + "Dead?:      unknown\n"
-            + "\n"
-            + "            Naked/Gear\n"
-            + "Strength:   209/209\n"
-            + "Dexterity:  170/170\n"
-            + "HP:         2270/2270\n"
-            + "Defense:    1657/2218\n"
-            + "AR:         2105/2108\n"
-            + "\n"
-            + "Fire:       233/193/133\n"
-            + "Cold:       263/223/163\n"
-            + "Lightning:  233/193/133\n"
-            + "Poison:     233/193/133\n"
-            + "\n"
-            + "Treachery\n"
-            + "Wire Fleece\n"
-            + "ShaelThulLem\n"
-            + "Defense: 455\n"
-            + "Durability: 29 of 32\n"
-            + "Required Level: 53\n"
-            + "Required Strength: 111\n"
-            + "Fingerprint: 0xd979d7a7\n"
-            + "Item Level: 88\n"
-            + "Version: Resurrected\n"
-            + "5% Chance to cast level 15 Fade when struck\n"
-            + "25% Chance to cast level 15 Venom on striking\n"
-            + "+2 to Assassin Skill Levels\n"
-            + "+45% Increased Attack Speed\n"
-            + "+20% Faster Hit Recovery\n"
-            + "Cold Resist +30%\n"
-            + "50% Extra Gold from Monsters\n"
-            + "3 Sockets (3 used)\n"
-            + "Socketed: Shael Rune\n"
-            + "Socketed: Thul Rune\n"
-            + "Socketed: Lem Rune\n"
-            + "\n"
-            + "Shael Rune\n"
-            + "Required Level: 29\n"
-            + "Version: Resurrected\n"
-            + "Weapons: +20% Increased Attack Speed\n"
-            + "Armor: +20% Faster Hit Recovery\n"
-            + "Shields: +20% Faster Block Rate\n"
-            + "\n"
-            + "Thul Rune\n"
-            + "Required Level: 23\n"
-            + "Version: Resurrected\n"
-            + "Weapons: Adds 3 - 14 Cold Damage Over 3 Secs (75 Frames)\n"
-            + "Armor: Cold Resist +30%\n"
-            + "Shields: Cold Resist +35%\n"
-            + "\n"
-            + "Lem Rune\n"
-            + "Required Level: 43\n"
-            + "Version: Resurrected\n"
-            + "Weapons: 75% Extra Gold from Monsters\n"
-            + "Armor: 50% Extra Gold from Monsters\n"
-            + "Shields: 50% Extra Gold from Monsters\n"
-            + "\n"
-            + "\n"
-            + "Kira's Guardian\n"
-            + "Tiara\n"
-            + "Defense: 106\n"
-            + "Durability: 17 of 25\n"
-            + "Required Level: 77\n"
-            + "Fingerprint: 0x843d90eb\n"
-            + "Item Level: 99\n"
-            + "Version: Resurrected\n"
-            + "+20% Faster Hit Recovery\n"
-            + "+64 Defense\n"
-            + "All Resistances +70\n"
-            + "Cannot Be Frozen\n"
-            + "\n"
-            + "\n"
-            + "Infinity\n"
-            + "Superior Great Poleaxe\n"
-            + "BerMalBerIst\n"
-            + "Two Hand Damage: 296 - 817\n"
-            + "Durability: 28 of 28\n"
-            + "Required Level: 63\n"
-            + "Required Strength: 169\n"
-            + "Required Dexterity: 89\n"
-            + "Fingerprint: 0xc1a9ec4\n"
-            + "Item Level: 88\n"
-            + "Version: Resurrected\n"
-            + "50% Chance to cast level 20 Chain Lightning when you Kill an Enemy\n"
-            + "Level 12 Conviction Aura When Equipped\n"
-            + "+35% Faster Run/Walk\n"
-            + "330% Enhanced Damage\n"
-            + "+3 to Attack Rating\n"
-            + "-46% to Enemy Lightning Resistance\n"
-            + "40% Chance of Crushing Blow\n"
-            + "Prevent Monster Heal\n"
-            + "+49 to Vitality (Based on Character Level)\n"
-            + "30% Better Chance of Getting Magic Items\n"
-            + "Level 21 Cyclone Armor Level 30 %s (30/30 Charges)\n"
-            + // TODO
-            "Ethereal\n"
-            + "4 Sockets (4 used)\n"
-            + "Socketed: Ber Rune\n"
-            + "Socketed: Mal Rune\n"
-            + "Socketed: Ber Rune\n"
-            + "Socketed: Ist Rune\n"
-            + "\n"
-            + "Ber Rune\n"
-            + "Required Level: 63\n"
-            + "Version: Resurrected\n"
-            + "Weapons: 20% Chance of Crushing Blow\n"
-            + "Armor: Damage Reduced by 8%\n"
-            + "Shields: Damage Reduced by 8%\n"
-            + "\n"
-            + "Mal Rune\n"
-            + "Required Level: 49\n"
-            + "Version: Resurrected\n"
-            + "Weapons: Prevent Monster Heal\n"
-            + "Armor: Magic Damage Reduced by 7\n"
-            + "Shields: Magic Damage Reduced by 7\n"
-            + "\n"
-            + "Ber Rune\n"
-            + "Required Level: 63\n"
-            + "Version: Resurrected\n"
-            + "Weapons: 20% Chance of Crushing Blow\n"
-            + "Armor: Damage Reduced by 8%\n"
-            + "Shields: Damage Reduced by 8%\n"
-            + "\n"
-            + "Ist Rune\n"
-            + "Required Level: 51\n"
-            + "Version: Resurrected\n"
-            + "Weapons: 30% Better Chance of Getting Magic Items\n"
-            + "Armor: 25% Better Chance of Getting Magic Items\n"
-            + "Shields: 25% Better Chance of Getting Magic Items\n"
-            + "\n"
-            + "\n";
+    // Two real, current D2R (version 105) characters a user shared while debugging GoMule against
+    // their actual game install. Together these are what found and validated the .d2s header
+    // offset fix (D2Character.readChar()'s comments) and the item-format version fix
+    // (D2Item.readExtend2()'s comment) -- every field asserted here was cross-checked against
+    // either the file's own contents (name) or real game data (class/level from the header; each
+    // item's name/defense/durability/properties against its real base stats and fixed property
+    // ranges in armor.txt/weapons.txt/uniqueitems.txt; the socket count against what the player
+    // confirmed seeing in-game). "Doesn't throw" was repeatedly not enough on its own during that
+    // investigation -- see D2Item.readExtend2()'s comment for real examples of wrong values that
+    // looked plausible -- so these assertions check actual decoded values, not just item counts.
+    @Test
+    public void realVersion105BarbarianCharacterWithCurrentItemFormatParsesCorrectly() throws Exception {
+        D2TxtFile.constructTxtFiles("./d2111");
+        D2Character d2Character = new D2Character(
+                new File(Resources.getResource("charFiles/barb_gear.d2s").toURI()).getAbsolutePath());
+
+        assertEquals("barb_gear", d2Character.getCharName());
+        assertEquals("Barbarian", d2Character.getCharClass());
+        assertEquals(1, d2Character.getCharLevel());
+
+        List<D2Item> items = d2Character.getItemList();
+        assertEquals(11, items.size());
+        // Two ethereal uniques exercise the ethereal-specific extra bit.
+        assertTrue(items.stream().anyMatch(i -> "Arreat's Face".equals(i.getItemName())));
+        assertTrue(items.stream().anyMatch(i -> "Spectral Slayer".equals(i.getItemName())));
+        assertTrue(items.stream().anyMatch(i -> "Madman's Bluster".equals(i.getItemName())));
+        assertTrue(items.stream().anyMatch(i -> "Curseweaver".equals(i.getItemName())));
+    }
+
+    // This second character exercises the socket-count bit specifically: Blasthammer has 2
+    // sockets in-game (player-confirmed), not the 4 that an earlier, incorrect version of this
+    // fix decoded -- 4 happened to equal the item's maximum possible sockets, so it looked valid
+    // without this assertion. Earth Shifter and everything after it in the item list only parses
+    // correctly because of the second, unconditional extra bit described in
+    // D2Item.readExtend2()'s comment.
+    @Test
+    public void realVersion105DruidCharacterWithSocketedItemParsesCorrectly() throws Exception {
+        D2TxtFile.constructTxtFiles("./d2111");
+        D2Character d2Character = new D2Character(
+                new File(Resources.getResource("charFiles/druid_gear.d2s").toURI()).getAbsolutePath());
+
+        assertEquals("druid_gear", d2Character.getCharName());
+        assertEquals("Druid", d2Character.getCharClass());
+
+        List<D2Item> items = d2Character.getItemList();
+        assertEquals(15, items.size());
+
+        D2Item blasthammer = items.stream()
+                .filter(i -> "Blasthammer".equals(i.getItemName()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("Blasthammer not found"));
+        assertEquals(2, blasthammer.getSocketNrTotal());
+
+        assertTrue(items.stream().anyMatch(i -> "Earth Shifter".equals(i.getItemName())));
+        assertTrue(items.stream().anyMatch(i -> "Equinox Visor".equals(i.getItemName())));
+        assertTrue(items.stream().anyMatch(i -> "Swift Descent".equals(i.getItemName())));
+        assertTrue(items.stream().anyMatch(i -> "Wraith Whisper".equals(i.getItemName())));
+    }
+
+    // This third character exercises two more gaps found only once a real character had a
+    // runeword item with sub-items actually socketed into it (the first two fixtures' runeword
+    // items, if any, had empty sockets):
+    //   - one extra byte after each socketed sub-item (D2Item's socket-recursion loop comment),
+    //     confirmed by decoding the three runes socketed into "Love" (Pul, Hel, El) correctly.
+    //   - a runeword's own bonus properties are a second property list read back-to-back with
+    //     the item's own list, before (not after) the trailing bits (D2Item.readExtend2()'s
+    //     second comment), confirmed against "Edge" (Tir+Tal+Amn) by matching every line of the
+    //     player's actual in-game tooltip to its underlying stored stat. An earlier, incorrect
+    //     version of this fix read plausible-but-wrong values here (e.g. +50 Dexterity from a
+    //     bow) that did not throw and were only caught by checking the tooltip.
+    @Test
+    public void realVersion105AmazonCharacterWithRunewordSocketsParsesCorrectly() throws Exception {
+        D2TxtFile.constructTxtFiles("./d2111");
+        D2Character d2Character = new D2Character(
+                new File(Resources.getResource("charFiles/zon_gear.d2s").toURI()).getAbsolutePath());
+
+        assertEquals("zon_gear", d2Character.getCharName());
+        assertEquals("Amazon", d2Character.getCharClass());
+
+        List<D2Item> items = d2Character.getItemList();
+        assertEquals(46, items.size());
+
+        D2Item love = items.stream()
+                .filter(i -> "Love".equals(i.getItemName()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("Love not found"));
+        assertEquals(3, love.getSocketNrTotal());
+        assertSocketedRuneNamesContain(love, "Pul Rune", "Hel Rune", "El Rune");
+
+        D2Item edge = items.stream()
+                .filter(i -> "Edge".equals(i.getItemName()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("Edge not found"));
+        assertEquals(3, edge.getSocketNrTotal());
+        assertSocketedRuneNamesContain(edge, "Tir Rune", "Tal Rune", "Amn Rune");
+
+        // Every one of these matches a line from the player's actual in-game tooltip for this
+        // item (stat IDs from itemstatcost.txt: 151=item_aura, 121=item_demondamage_percent,
+        // 122=item_undeaddamage_percent, 2=dexterity -- one of the four "+9 to all Attributes"
+        // components).
+        assertEquals(15, findPropValue(edge, 151)[1]); // Level 15 Thorns Aura When Equipped
+        assertEquals(334, findPropValue(edge, 121)[0]); // +334% Damage to Demons
+        assertEquals(280, findPropValue(edge, 122)[0]); // +280% Damage to Undead
+        assertEquals(9, findPropValue(edge, 2)[0]); // part of "All Stats +9"
+    }
+
+    // A fourth real character (a Bowazon mule, by far the largest of the four) originally hit an
+    // item-format gap none of the other three exercised: a unique jewel ("Autumn Facet") followed
+    // by 48 extra trailing bits nothing else read -- this is the "elemental Facet" fix
+    // (D2Item.isElementalFacet() and its two call sites). Confirmed real by checking every
+    // property on the jewel itself against its uniqueitems.txt recipe and the player's real
+    // in-game tooltip, and confirmed general (not file-specific) across three independent Facets
+    // in two files, including one appearing as a socketed sub-item (see bowazon2.d2s's test
+    // below). A second, unrelated bug (see that same test) blocked this file's mercenary items
+    // too; with both fixes, this file now loads completely -- every character and mercenary item,
+    // with no partial-load fallback at all.
+    @Test
+    public void realVersion105AmazonCharacterWithElementalFacetParsesFully() throws Exception {
+        D2TxtFile.constructTxtFiles("./d2111");
+        D2Character d2Character = new D2Character(
+                new File(Resources.getResource("charFiles/bowazon.d2s").toURI()).getAbsolutePath());
+
+        assertEquals("bowazon", d2Character.getCharName());
+        assertEquals("Amazon", d2Character.getCharClass());
+        assertFalse(d2Character.isItemsIncomplete());
+
+        List<D2Item> items = d2Character.getItemList();
+        assertEquals(242, items.size());
+        assertTrue(items.stream().anyMatch(i -> i.getItemName().contains("Autumn Facet")));
+        assertEquals(9, d2Character.getMercItemNr());
+        // Confirms the flag-29 fix (D2Item.readExtend()'s comment): without it, "Sling" corrupted
+        // everything after it into "Ear"-shaped garbage and "Gem Bag" never appeared at all.
+        assertTrue(items.stream().anyMatch(i -> "Sling".equals(i.getItemName())));
+        assertTrue(items.stream().anyMatch(i -> i.getItemName() != null && i.getItemName().contains("Gem Bag")));
+        assertTrue(items.stream().noneMatch(i -> i.getItemName() != null && i.getItemName().contains("Ear")));
+
+        // Not calling saveInternal(null) here: D2Backup.backup() dereferences its D2Project
+        // argument unconditionally (pProject.getBackup()), so passing null to "just confirm it
+        // doesn't throw the incomplete-item check anymore" actually NPEs further in -- and
+        // because that NPE is caught and routed through D2FileManager.displayErrorDialog(), it
+        // was popping open the real GoMule application window during this test run. A real
+        // D2Project can't be constructed here either, since its constructor requires a
+        // D2FileManager. isItemsIncomplete() above already covers the invariant this was meant
+        // to check.
+    }
+
+    // A second snapshot of the same character (after the player added two more unique jewels --
+    // "Rime Facet" and "Thunder Facet" -- to chase the gap above) found two more real, fixable
+    // bugs along the way, both confirmed independently of the elemental-Facet gap:
+    //   - D2Item.readExtend()'s "rvl" (Full Rejuvenation Potion) fix: confirmed by brute-force
+    //     scanning the raw bytes for a valid next item at every bit offset near the boundary --
+    //     exactly 8 bits, in both this file and bowazon.d2s, was the only amount that produced a
+    //     real, recognizable item (not just "didn't throw").
+    //   - D2Prop.generateDisplay()'s case (19)/(29) fix: a new Reimagined stat
+    //     (pl_maxdamage_percent, on "Collin's Lesser Might") has only one value where this branch
+    //     previously always assumed two, throwing ArrayIndexOutOfBoundsException whenever an item
+    //     with that stat was rendered -- a real crash, not a parsing issue.
+    // With the elemental-Facet fix, this file's full player inventory loads too -- including
+    // "Sadira", a unique bow whose first socket holds a second, independent Rime Facet, which
+    // proved the fix needed a second half: D2Item's socket-recursion loop must NOT also add its
+    // usual one-extra-byte-per-socket skip after a socketed Facet, since the Facet's own 48-bit
+    // skip already covers it (confirmed the same way as the rest of this fix -- adding both
+    // skips broke the very next socket, a Shael Rune, which only decoded correctly with no extra
+    // skip at all after the Facet).
+    // A third, separate bug then surfaced one level further down, in the mercenary item list: the
+    // three independent "extra trailing bit" flags found earlier (D2Item.readExtend2()'s
+    // iSocketed/unconditional/ethereal bits) were each validated only one at a time -- this file's
+    // mercenary carries "Fortitude" (El+Sol+Dol+Lo, a real runeword) and "Infinity" (Ber+Mal+Ber+
+    // Ist, also real), both socketed AND ethereal at once, a combination none of the earlier
+    // fixtures had. Brute-force scanning Fortitude's actual socket boundary (confirmed real by
+    // decoding all 4 runes correctly, at the fixed item-length intervals real runes always sit at)
+    // showed the three flags combine by XOR, not by sum: 1 bit when iSocketed and iEthereal agree
+    // (including, newly, when both are true -- previously only "both false" was confirmed), 2 bits
+    // when exactly one is true. Which specific bit(s) coincide when both flags are true is still
+    // unknown; only the net count is confirmed. With this third fix, the file loads completely.
+    // A fourth, unrelated rendering bug (not a parsing one) showed up once the file loaded fully:
+    // D2PropCollection.combineProps()'s same-stat merge had a stale skip-list missing stat 83
+    // (item_addclassskills), so a real unique amulet here ("Death Emblem", rolling two separate
+    // class-skill bonuses -- +1 Amazon, +1 Necromancer, confirmed against the player's actual
+    // in-game tooltip) had its two properties wrongly summed into one, both the class id and the
+    // value, displaying as a single incorrect "+2 Necromancer Skills" instead of two real lines.
+    // A fifth, separate item-format gap (D2Item.readExtend()'s flag-29 comment) hid in plain
+    // sight the whole time: "Sling" (a unique ring with a randomly-rolled class-skill property,
+    // "magicskill") needed 56 extra trailing bits nothing read, corrupting "Gem Bag" (the very
+    // next item) into unrecognizable "Ear"-shaped garbage, and everything for a while after that
+    // too -- reported by the player as "the Gem Bag is missing from the stash and shows up as an
+    // ear in the belt potion slot" (the latter because the corrupted item's row/col/panel
+    // coincidentally matched the layout GoMule's belt-potion lookup searches by). Brute-force
+    // scanning Sling's actual end confirmed 56 bits as the only offset, out of about 100 tried,
+    // that decoded a real, recognizable "Gem Bag" right after it.
+    // A sixth, also unrelated rendering bug (not a parsing one, and not affecting loading or
+    // saving) showed up in "Sadira": D2PropCollection.isHiddenSkillGrant()'s comment.
+    @Test
+    public void secondSnapshotOfAmazonCharacterConfirmsSixMoreRealFixes() throws Exception {
+        D2TxtFile.constructTxtFiles("./d2111");
+        D2Character d2Character = new D2Character(
+                new File(Resources.getResource("charFiles/bowazon2.d2s").toURI()).getAbsolutePath());
+
+        assertEquals("bowazon", d2Character.getCharName());
+        assertFalse(d2Character.isItemsIncomplete());
+
+        List<D2Item> items = d2Character.getItemList();
+        assertEquals(182, items.size());
+        assertTrue(items.stream().anyMatch(i -> "Sling".equals(i.getItemName())));
+        assertTrue(items.stream().anyMatch(i -> i.getItemName() != null && i.getItemName().contains("Gem Bag")));
+        assertTrue(items.stream().noneMatch(i -> i.getItemName() != null && i.getItemName().contains("Ear")));
+        // Confirms the rvl fix: without it, this item (right after the Full Rejuvenation
+        // Potion) was unreachable -- parsing broke down before ever getting here.
+        assertTrue(items.stream().anyMatch(i -> "Power of Ice".equals(i.getItemName())));
+        // Confirms the D2Prop fix: without it, rendering this specific item threw
+        // ArrayIndexOutOfBoundsException.
+        D2Item collins = items.stream()
+                .filter(i -> i.getItemName().contains("Collin's Lesser Might"))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("Collin's Lesser Might not found"));
+        assertEquals(-40, findPropValue(collins, 364)[0]); // pl_maxdamage_percent
+        assertEquals(-40, findPropValue(collins, 365)[0]); // pl_mindamage_percent
+        D2ItemRenderer.itemDump(collins, true); // must not throw
+
+        // Confirms the item_addclassskills merge fix (D2PropCollection.combineProps()): "Death
+        // Emblem" rolls two separate stat-83 properties -- [class 0 (Amazon), 1] and [class 2
+        // (Necromancer), 1] -- confirmed against the player's real in-game tooltip ("+1 to
+        // Amazon Skills" and "+1 to Necromancer Skills" as two separate lines). Without the fix,
+        // these merged into a single, wrong "[2, 2]" (both the class id and the value summed).
+        D2Item deathEmblem = items.stream()
+                .filter(i -> i.getItemName() != null && i.getItemName().contains("Death Emblem"))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("Death Emblem not found"));
+        List<int[]> classSkillProps = new java.util.ArrayList<>();
+        for (Object propObj : deathEmblem.getPropCollection()) {
+            gomule.item.D2Prop prop = (gomule.item.D2Prop) propObj;
+            if (prop.getPNum() == 83) classSkillProps.add(prop.getPVals());
+        }
+        assertEquals(2, classSkillProps.size());
+        assertTrue(classSkillProps.stream().anyMatch(v -> v[0] == 0 && v[1] == 1)); // +1 Amazon
+        assertTrue(classSkillProps.stream().anyMatch(v -> v[0] == 2 && v[1] == 1)); // +1 Necromancer
+        D2ItemRenderer.itemDump(deathEmblem, true); // must not throw
+
+        // Confirms the socketed-Facet half of the elemental-Facet fix: Sadira's first socket is a
+        // second, real Rime Facet (distinct from the unsocketed one elsewhere in this file), and
+        // decoding it correctly is what lets the three Shael Runes after it decode correctly too.
+        D2Item sadira = items.stream()
+                .filter(i -> "Sadira".equals(i.getItemName()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("Sadira not found"));
+        List<D2Item> sadiraSockets = sadira.getiSocketedItems();
+        assertEquals(4, sadiraSockets.size());
+        assertTrue(sadiraSockets.get(0).getItemName().contains("Rime Facet"));
+        assertTrue(sadiraSockets.get(1).getItemName().contains("Shael Rune"));
+        assertTrue(sadiraSockets.get(2).getItemName().contains("Shael Rune"));
+        assertTrue(sadiraSockets.get(3).getItemName().contains("Shael Rune"));
+
+        // Confirms the hidden-skill-grant display fix (D2PropCollection.isHiddenSkillGrant()):
+        // Sadira's recipe includes "oskill_hide" granting skill 449 ("Hidden Charm Passive"), an
+        // internal-only flag the real game never shows in the tooltip -- without the fix, GoMule
+        // rendered it as "+1 to Charm Weight Active" (skill 449's translated display name) on
+        // every item that grants it, reported by the player as "a lot of non-charm items" showing
+        // an unexplained charm-related modifier.
+        assertFalse(D2ItemRenderer.itemDump(sadira, true).contains("Charm Weight"));
+
+        // Confirms the socketed+ethereal XOR fix, against the mercenary item list this time: both
+        // "Fortitude" and "Infinity" are ethereal, socketed runewords, and both decode to their
+        // exact real recipes.
+        assertEquals(9, d2Character.getMercItemNr());
+        D2Item fortitude = mercItemNamed(d2Character, "Fortitude");
+        assertTrue(fortitude.isEthereal());
+        assertSocketedRuneNamesContain(fortitude, "El Rune", "Sol Rune", "Dol Rune", "Lo Rune");
+        D2Item infinity = mercItemNamed(d2Character, "Infinity");
+        assertTrue(infinity.isEthereal());
+        assertSocketedRuneNamesContain(infinity, "Ber Rune", "Mal Rune", "Ber Rune", "Ist Rune");
+
+        // See the bowazon.d2s test above for why saveInternal(null) isn't called here.
+    }
+
+    private static D2Item mercItemNamed(D2Character pCharacter, String pName) {
+        for (int i = 0; i < pCharacter.getMercItemNr(); i++) {
+            D2Item lItem = pCharacter.getMercItem(i);
+            if (lItem.getItemName().contains(pName)) return lItem;
+        }
+        throw new AssertionError("Mercenary item '" + pName + "' not found");
+    }
+
+    // Socketed runes' getItemName() includes embedded color-code markup and the "(#N)" rune
+    // number (as rendered for display), so this checks each expected name is a substring rather
+    // than an exact match.
+    private static void assertSocketedRuneNamesContain(D2Item item, String... expectedNames) {
+        List<D2Item> sockets = item.getiSocketedItems();
+        assertEquals(expectedNames.length, sockets.size());
+        for (int i = 0; i < expectedNames.length; i++) {
+            assertTrue(
+                    sockets.get(i).getItemName().contains(expectedNames[i]),
+                    "Expected socket " + i + " of " + item.getItemName() + " to contain '"
+                            + expectedNames[i] + "' but was: " + sockets.get(i).getItemName());
+        }
+    }
+
+    private static int[] findPropValue(D2Item item, int statId) {
+        for (Object propObj : item.getPropCollection()) {
+            gomule.item.D2Prop prop = (gomule.item.D2Prop) propObj;
+            if (prop.getPNum() == statId) {
+                return prop.getPVals();
+            }
+        }
+        throw new AssertionError("Stat " + statId + " not found on " + item.getItemName());
+    }
+
+    @Test
+    public void classByteToAbbreviationHandlesAllEightClasses() {
+        assertEquals("ama", D2Character.classByteToAbbreviation(0));
+        assertEquals("sor", D2Character.classByteToAbbreviation(1));
+        assertEquals("nec", D2Character.classByteToAbbreviation(2));
+        assertEquals("pal", D2Character.classByteToAbbreviation(3));
+        assertEquals("bar", D2Character.classByteToAbbreviation(4));
+        assertEquals("dru", D2Character.classByteToAbbreviation(5));
+        assertEquals("ass", D2Character.classByteToAbbreviation(6));
+        assertEquals("war", D2Character.classByteToAbbreviation(7));
+        assertNull(D2Character.classByteToAbbreviation(8));
+    }
 }

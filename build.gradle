@@ -5,6 +5,16 @@ plugins {
 sourceCompatibility = 1.8
 targetCompatibility = 1.8
 
+// Some source files contain non-ASCII literals (e.g. the D2 color-code marker 'ÿ' in
+// D2ItemRenderer.java and D2ImageCache.java) saved as UTF-8 bytes. Without this, javac
+// falls back to the platform default charset, which is UTF-8 on macOS/Linux but
+// Windows-1252 on Windows -- silently miscompiling those literals so the affected
+// regex/equals checks never match on Windows. Pin it explicitly so the build is
+// reproducible across platforms.
+tasks.withType(JavaCompile) {
+    options.encoding = 'UTF-8'
+}
+
 group 'org.example'
 version '1.0-SNAPSHOT'
 
@@ -22,6 +32,14 @@ dependencies {
 
 test {
     useJUnitPlatform()
+    // Tests exercise parsing/data logic only and should never touch real Swing rendering, but
+    // GoMule's GUI singletons are wired together such that loading certain classes (e.g.
+    // D2FileManager, whose static field eagerly constructs and shows the whole application
+    // window) is enough to pop a real window open as a side effect -- this has happened from an
+    // unrelated test reaching an error-handling path that called into it. Headless mode turns
+    // any future accident like that into a loud HeadlessException at the point it happens,
+    // instead of a real window silently appearing during a test run.
+    systemProperty 'java.awt.headless', 'true'
 }
 
 jar {
@@ -51,6 +69,7 @@ task copyResourcesToDistribution(type: Copy) {
         include 'LICENSE.txt'
         include 'standard.css'
         include 'standard.dat'
+        include 'GoMule.bat'
 
     }
     into "build/tmp/distribution/GoMule/"
@@ -64,7 +83,7 @@ task createDistribution {
 task distribution(type: Zip) {
     from 'build/tmp/distribution/'
     include 'GoMule/**'
-    archiveName 'GoMule_Reimagined_2.1.2.zip'
+    archiveName 'GoMule_Reimagined_3.0.10.zip'
 }
 
 copyJarToDistribution.dependsOn jar

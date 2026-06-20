@@ -127,6 +127,17 @@ public class D2Character extends D2ItemListAdapter {
     private byte iBetweenItems[];
     private byte iAfterItems[];
 
+    // Set when an item partway through this character's item list fails to parse (an unknown
+    // item-format gap; see D2Item.readExtend2()'s comment for the ones already found). Items
+    // can't be individually re-synced after a parse failure -- each one's length is only known
+    // once it parses successfully, so there is no "skip the bad item" option. Instead, everything
+    // successfully read *before* the failure is kept and shown; nothing after it is. Saving is
+    // refused (see saveInternal()) because the raw bytes this class would need to write back
+    // (iBeforeItems/iBetweenItems/iAfterItems) were never captured -- writing without them would
+    // silently truncate the character file.
+    private boolean iItemsIncomplete = false;
+    private String iItemsIncompleteReason;
+
     public D2Character(String pFileName) throws Exception {
         super(pFileName);
         if (iFileName == null || !iFileName.toLowerCase().endsWith(".d2s"))
@@ -144,7 +155,17 @@ public class D2Character extends D2ItemListAdapter {
         iReader.set_byte_pos(4);
         long lVersion = iReader.read(32);
 //        System.err.println("Version: " + lVersion);
-        if (lVersion != 99) throw new Exception("Incorrect Character version: " + lVersion);
+        // The .d2s version field increments with every D2R patch (96 = pre-D2R, 97 = D2R
+        // 1.0-1.1, 98 = D2R 1.2-1.3, 99 = D2R 1.4+), but the header layout this class reads
+        // (class byte, level, name, stats, items, ...) hasn't changed since version 98. A
+        // hard equality check here means every subsequent D2R patch breaks this entirely, as
+        // happened on a real D2R install reporting version 105. Reject only the genuinely
+        // older/incompatible classic formats; accept 99 and anything newer.
+        if (lVersion < 99) throw new Exception("Incorrect Character version: " + lVersion);
+        // Items embedded in this character (equipment, inventory, cube, stash, merc gear) use a
+        // format that itself depends on this same version -- see D2Item.setFormatVersion()'s
+        // comment for what changed and what's still unconfirmed.
+        D2Item.setFormatVersion(lVersion);
         iReader.set_byte_pos(8);
         long lSize = iReader.read(32);
         if (iReader.get_length() != lSize) throw new Exception("Incorrect FileSize: " + lSize);
@@ -154,51 +175,41 @@ public class D2Character extends D2ItemListAdapter {
         if (!Arrays.equals(calculatedChecksum, checksumFromFile)) throw new Exception("Incorrect Checksum");
         iReader.set_byte_pos(16);
 //		long lWeaponSet = iReader.read(32);
-        iReader.set_byte_pos(267);
+        // The classic/D2R-1.4.x (version 99) header had this 16-byte field at offset 267, with
+        // a now-unused 16-byte placeholder earlier at offset 20. A current D2R install (observed
+        // version 105) removes that early placeholder (shifting everything after it 16 bytes
+        // earlier) and inserts a larger "Character Menu Appearance" block later in the header
+        // (shifting this field 32 bytes later than the old position) -- net effect: name moved
+        // from 267 to 299. Confirmed against a real save's raw bytes; everything from the quest
+        // block onward is found by searching for literal markers ("Woo!", "gf", "if", "JM", ...)
+        // so it isn't affected by this at all -- only these few fixed-offset reads are.
+        iReader.set_byte_pos(299);
         StringBuffer lCharName = new StringBuffer();
         for (int i = 0; i < 16; i++) {
             long lChar = iReader.read(8);
             if (lChar != 0) lCharName.append((char) lChar);
         }
         iCharName = lCharName.toString();
-        iReader.set_byte_pos(36);
+        iReader.set_byte_pos(20);
         iReader.skipBits(2);
         iHC = iReader.read(1) == 1;
-        iReader.set_byte_pos(37);
+        iReader.set_byte_pos(21);
 //		long lCharTitle = iReader.read(8);
         iReader.read(8);
-        iReader.set_byte_pos(40);
+        iReader.set_byte_pos(24);
         lCharCode = iReader.read(8);
-        switch ((int) lCharCode) {
-            case 0:
-                cClass = "ama";
-                break;
-            case 1:
-                cClass = "sor";
-                break;
-            case 2:
-                cClass = "nec";
-                break;
-            case 3:
-                cClass = "pal";
-                break;
-            case 4:
-                cClass = "bar";
-                break;
-            case 5:
-                cClass = "dru";
-                break;
-            case 6:
-                cClass = "ass";
-                break;
-        }
-        iReader.set_byte_pos(43);
+        cClass = classByteToAbbreviation(lCharCode);
+        if (cClass == null) throw new Exception("Invalid character class byte: " + lCharCode);
+        iReader.set_byte_pos(27);
         iCharLevel = iReader.read(8);
         if (iCharLevel < 1 || iCharLevel > 99)
             throw new Exception("Invalid char level: " + iCharLevel + " (should be between 1-99)");
         iCharClass = D2TxtFile.getCharacterCode((int) lCharCode);
         iTitleString = " Lvl " + iCharLevel + " " + D2TxtFile.getCharacterCode((int) lCharCode);
-        iReader.set_byte_pos(177);
+        // Old offset 177, shifted 16 bytes earlier same as the class/level fields above (this
+        // block sits before the later "Character Menu Appearance" insertion, so it only inherits
+        // the earlier shift, not both).
+        iReader.set_byte_pos(161);
         if (iReader.read(8) == 1) ;//MERC IS DEAD?
         iReader.skipBits(8);
         if (iReader.read(32) != 0) {
@@ -521,11 +532,26 @@ public class D2Character extends D2ItemListAdapter {
         int num_items = (int) iReader.read(16);
         int lCharStart = lFirstPos + 4;
         int lCharEnd = lCharStart;
+        int lCharItemsRead = 0;
         for (int i = 0; i < num_items; i++) {
             int lItemStart = iReader.get_byte_pos();
-            D2Item lItem = new D2Item(iFileName, iReader, iCharLevel);
+            D2Item lItem;
+            try {
+                lItem = new D2Item(iFileName, iReader, iCharLevel);
+            } catch (Exception pEx) {
+                // An item partway through the list failed to parse -- there is no reliable way
+                // to skip just this one and resync on the next, since each item's length is only
+                // known once it has parsed successfully (see this field's own comment). Keep
+                // everything read so far and stop; the rest of readChar() (skills, stats) doesn't
+                // depend on item positions and still runs normally.
+                iItemsIncomplete = true;
+                iItemsIncompleteReason = "Item " + (i + 1) + " of " + num_items + " failed to parse: " + pEx;
+                iItemEnd = lCharEnd;
+                return;
+            }
             lLastItemEnd = lItemStart + lItem.getItemLength();
             lCharEnd = lLastItemEnd;
+            lCharItemsRead++;
             if (lItem.isCursorItem()) {
                 if (iCharCursorItem != null) throw new Exception("Double cursor item found");
                 iCharCursorItem = lItem;
@@ -547,7 +573,17 @@ public class D2Character extends D2ItemListAdapter {
             for (int i = 0; i < num_items; i++) {
                 int lItemStart = iReader.get_byte_pos();
                 if (lItemStart == -1) throw new Exception("Merc item " + (i + 1) + " not found.");
-                D2Item lItem = new D2Item(iFileName, iReader, iCharLevel);
+                D2Item lItem;
+                try {
+                    lItem = new D2Item(iFileName, iReader, iCharLevel);
+                } catch (Exception pEx) {
+                    // Same situation as the char-items loop above, just further into the file --
+                    // all lCharItemsRead character items already read are still kept and shown.
+                    iItemsIncomplete = true;
+                    iItemsIncompleteReason = "Mercenary item " + (i + 1) + " of " + num_items
+                            + " failed to parse (all " + lCharItemsRead + " character items loaded fine): " + pEx;
+                    return;
+                }
                 lLastItemEnd = lItemStart + lItem.getItemLength();
                 lMercEnd = lLastItemEnd;
                 addMercItem(lItem);
@@ -748,20 +784,22 @@ public class D2Character extends D2ItemListAdapter {
         }
     }
 
-    public int getARClassBonus() {
-        if (getCharClass().equals("Barbarian") || getCharClass().equals("Paladin")) {
-            return 20;
-        } else if (getCharClass().equals("Assasin")) {
-            return 15;
-        } else if (getCharClass().equals("Amazon") || getCharClass().equals("Druid")) {
-            return 5;
-        } else if (getCharClass().equals("Necromancer")) {
-            return -10;
-        } else if (getCharClass().equals("Sorceress")) {
-            return -15;
-        } else {
-            return 99999999;
+    static String classByteToAbbreviation(long pCharCode) {
+        switch ((int) pCharCode) {
+            case 0: return "ama";
+            case 1: return "sor";
+            case 2: return "nec";
+            case 3: return "pal";
+            case 4: return "bar";
+            case 5: return "dru";
+            case 6: return "ass";
+            case 7: return "war";
+            default: return null;
         }
+    }
+
+    public int getARClassBonus() {
+        return Integer.parseInt(D2TxtFile.CHARSTATS.searchColumns("class", getCharClass()).get("ToHitFactor"));
     }
 
     public ArrayList getItemList() {
@@ -1312,6 +1350,15 @@ public class D2Character extends D2ItemListAdapter {
     }
 
     public void saveInternal(D2Project pProject) {
+        // Refuse to write back a character whose item list didn't fully parse -- iBeforeItems /
+        // iBetweenItems / iAfterItems (the raw bytes this needs below to reassemble the file)
+        // were never captured in that case, so writing would silently truncate or corrupt the
+        // character file. See isItemsIncomplete()'s comment for why a partial item list can't be
+        // safely resynced and re-attempted.
+        if (iItemsIncomplete) {
+            throw new RuntimeException(
+                    "Cannot save " + iCharName + ": its item list did not fully load (" + iItemsIncompleteReason + ")");
+        }
         // backup file
         D2Backup.backup(pProject, iFileName, iReader);
         // build an a byte array that contains the
@@ -1794,6 +1841,14 @@ public class D2Character extends D2ItemListAdapter {
 
     public String getCharName() {
         return iCharName;
+    }
+
+    public boolean isItemsIncomplete() {
+        return iItemsIncomplete;
+    }
+
+    public String getItemsIncompleteReason() {
+        return iItemsIncompleteReason;
     }
 
     public long getCharExp() {

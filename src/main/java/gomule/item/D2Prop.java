@@ -409,7 +409,13 @@ public class D2Prop {
                     } else if (oString.equals("%+d to Minimum Weapon Damage")) {
                         matchingPropsRecords = singletonList(D2TxtFile.PROPS.searchColumns("code", "dmg-min"));
                     } else {
-                        return oString.replaceAll("%\\+d", "+" + Integer.toString(pVals[1]));
+                        // Stats reaching this branch are normally a (skill, value) pair, with
+                        // the displayed number in pVals[1] -- but some stats using this same
+                        // descfunc (e.g. Reimagined's pl_maxdamage_percent/pl_mindamage_percent)
+                        // carry only a single value, with nothing to put in pVals[1] at all.
+                        // pVals[pVals.length - 1] is the displayed value either way: index 1 for
+                        // the normal 2-value case, index 0 when there's only one value to show.
+                        return oString.replaceAll("%\\+d", "+" + Integer.toString(pVals[pVals.length - 1]));
                     }
                 }
                 D2TxtFileItemProperties o = matchingPropsRecords.get(0);
@@ -668,6 +674,15 @@ public class D2Prop {
 
             case 50:
                 return "Martial Art Skills (Assassin Only)";
+
+            case 21:
+                return "Demon Skills (Warlock Only)";
+
+            case 22:
+                return "Eldritch Skills (Warlock Only)";
+
+            case 23:
+                return "Chaos Skills (Warlock Only)";
 
         }
         return "Unknown Tree (P 188)";
