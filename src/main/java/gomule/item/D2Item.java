@@ -523,6 +523,21 @@ public class D2Item implements Comparable, D2ItemInterface {
         if (isElementalFacet() && usesPostV99ItemFormat()) {
             pFile.skipBits(48);
         }
+        // Flag 29 (never previously checked anywhere in this codebase) is set on every item seen
+        // so far that grants a skill via a randomly-rolled property (func 21 in properties.txt,
+        // e.g. "magicskill": a random class skill from a given tab) -- confirmed across two real
+        // characters' full inventories: every elemental Facet (isElementalFacet(), whose skill is
+        // fixed, not randomly rolled) has it set, and so does a real unique ring ("Sling", whose
+        // "magicskill" property -- a randomly-rolled class skill -- needed 56 extra trailing bits
+        // nothing else read, brute-force-confirmed as the only offset out of ~100 tried that
+        // produced a real, recognizable next item: a "Gem Bag", which is otherwise missing
+        // entirely and instead corrupts the next several items into "Ear"-shaped garbage).
+        // Facets already get their own, different (48-bit) skip above; this is for everything
+        // else that sets flag 29 -- still just one confirmed real item, so the 56-bit figure may
+        // not generalize to every flag-29 item. What these bits hold is still unknown.
+        if (check_flag(29) && !isElementalFacet() && usesPostV99ItemFormat()) {
+            pFile.skipBits(56);
+        }
     }
 
     private void readExtend1(D2BitReader pFile) throws Exception {

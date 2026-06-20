@@ -157,9 +157,14 @@ public class D2CharacterTest {
         assertFalse(d2Character.isItemsIncomplete());
 
         List<D2Item> items = d2Character.getItemList();
-        assertEquals(241, items.size());
+        assertEquals(242, items.size());
         assertTrue(items.stream().anyMatch(i -> i.getItemName().contains("Autumn Facet")));
         assertEquals(9, d2Character.getMercItemNr());
+        // Confirms the flag-29 fix (D2Item.readExtend()'s comment): without it, "Sling" corrupted
+        // everything after it into "Ear"-shaped garbage and "Gem Bag" never appeared at all.
+        assertTrue(items.stream().anyMatch(i -> "Sling".equals(i.getItemName())));
+        assertTrue(items.stream().anyMatch(i -> i.getItemName() != null && i.getItemName().contains("Gem Bag")));
+        assertTrue(items.stream().noneMatch(i -> i.getItemName() != null && i.getItemName().contains("Ear")));
 
         d2Character.saveInternal(null); // must not throw -- the item list is no longer incomplete
     }
@@ -199,8 +204,17 @@ public class D2CharacterTest {
     // class-skill bonuses -- +1 Amazon, +1 Necromancer, confirmed against the player's actual
     // in-game tooltip) had its two properties wrongly summed into one, both the class id and the
     // value, displaying as a single incorrect "+2 Necromancer Skills" instead of two real lines.
+    // A fifth, separate item-format gap (D2Item.readExtend()'s flag-29 comment) hid in plain
+    // sight the whole time: "Sling" (a unique ring with a randomly-rolled class-skill property,
+    // "magicskill") needed 56 extra trailing bits nothing read, corrupting "Gem Bag" (the very
+    // next item) into unrecognizable "Ear"-shaped garbage, and everything for a while after that
+    // too -- reported by the player as "the Gem Bag is missing from the stash and shows up as an
+    // ear in the belt potion slot" (the latter because the corrupted item's row/col/panel
+    // coincidentally matched the layout GoMule's belt-potion lookup searches by). Brute-force
+    // scanning Sling's actual end confirmed 56 bits as the only offset, out of about 100 tried,
+    // that decoded a real, recognizable "Gem Bag" right after it.
     @Test
-    public void secondSnapshotOfAmazonCharacterConfirmsFourMoreRealFixes() throws Exception {
+    public void secondSnapshotOfAmazonCharacterConfirmsFiveMoreRealFixes() throws Exception {
         D2TxtFile.constructTxtFiles("./d2111");
         D2Character d2Character = new D2Character(
                 new File(Resources.getResource("charFiles/bowazon2.d2s").toURI()).getAbsolutePath());
@@ -209,7 +223,10 @@ public class D2CharacterTest {
         assertFalse(d2Character.isItemsIncomplete());
 
         List<D2Item> items = d2Character.getItemList();
-        assertEquals(181, items.size());
+        assertEquals(182, items.size());
+        assertTrue(items.stream().anyMatch(i -> "Sling".equals(i.getItemName())));
+        assertTrue(items.stream().anyMatch(i -> i.getItemName() != null && i.getItemName().contains("Gem Bag")));
+        assertTrue(items.stream().noneMatch(i -> i.getItemName() != null && i.getItemName().contains("Ear")));
         // Confirms the rvl fix: without it, this item (right after the Full Rejuvenation
         // Potion) was unreachable -- parsing broke down before ever getting here.
         assertTrue(items.stream().anyMatch(i -> "Power of Ice".equals(i.getItemName())));
