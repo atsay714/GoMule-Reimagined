@@ -220,8 +220,10 @@ public class D2CharacterTest {
     // coincidentally matched the layout GoMule's belt-potion lookup searches by). Brute-force
     // scanning Sling's actual end confirmed 56 bits as the only offset, out of about 100 tried,
     // that decoded a real, recognizable "Gem Bag" right after it.
+    // A sixth, also unrelated rendering bug (not a parsing one, and not affecting loading or
+    // saving) showed up in "Sadira": D2PropCollection.isHiddenSkillGrant()'s comment.
     @Test
-    public void secondSnapshotOfAmazonCharacterConfirmsFiveMoreRealFixes() throws Exception {
+    public void secondSnapshotOfAmazonCharacterConfirmsSixMoreRealFixes() throws Exception {
         D2TxtFile.constructTxtFiles("./d2111");
         D2Character d2Character = new D2Character(
                 new File(Resources.getResource("charFiles/bowazon2.d2s").toURI()).getAbsolutePath());
@@ -279,6 +281,14 @@ public class D2CharacterTest {
         assertTrue(sadiraSockets.get(1).getItemName().contains("Shael Rune"));
         assertTrue(sadiraSockets.get(2).getItemName().contains("Shael Rune"));
         assertTrue(sadiraSockets.get(3).getItemName().contains("Shael Rune"));
+
+        // Confirms the hidden-skill-grant display fix (D2PropCollection.isHiddenSkillGrant()):
+        // Sadira's recipe includes "oskill_hide" granting skill 449 ("Hidden Charm Passive"), an
+        // internal-only flag the real game never shows in the tooltip -- without the fix, GoMule
+        // rendered it as "+1 to Charm Weight Active" (skill 449's translated display name) on
+        // every item that grants it, reported by the player as "a lot of non-charm items" showing
+        // an unexplained charm-related modifier.
+        assertFalse(D2ItemRenderer.itemDump(sadira, true).contains("Charm Weight"));
 
         // Confirms the socketed+ethereal XOR fix, against the mercenary item list this time: both
         // "Fortitude" and "Infinity" are ethereal, socketed runewords, and both decode to their
