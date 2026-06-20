@@ -147,7 +147,21 @@ public class D2Stash extends D2ItemListAdapter {
 
             long lVersionNr = iBR.read(16);
 
-            if (lVersionNr == 99) {
+            // lVersionNr is this clipboard file's own ("ATMA") format version, not the D2R save
+            // version D2Item.setFormatVersion() needs -- unlike .d2s/.d2i, this format has no
+            // field that says what version the items inside were copied from. A real clipboard
+            // item ("Oakheart", copied from a current D2R Reimagined character) crashed here with
+            // the same "misread a stat with no Save Bits" symptom as every other post-v99 gap
+            // fixed elsewhere in this file -- because this is the one item reader that never
+            // calls setFormatVersion() at all, so whatever a previously-opened character/stash
+            // left the (process-wide, static) version at was used instead. That's harmless if a
+            // current-format file happened to load first in the same session, and exactly this
+            // crash if nothing had -- confirmed real: the clipboard loads at GoMule startup,
+            // before the user has opened anything. Since GoMule-Reimagined's items are always
+            // current-format in practice, default to that rather than the old/legacy fallback
+            // every other reader defaults to when it doesn't know better.
+            D2Item.setFormatVersion(105);
+            if (lVersionNr >= 99) {
                 readItems(lNumItems);
             } else {
                 throw new Exception("Stash Version Incorrect!");
