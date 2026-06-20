@@ -93,7 +93,13 @@ public class D2ImageCache {
         String image = pItem.get_image();
 
         // hardcoded exceptions
-        if (pItem.getItem_type().equals("kch")) // keychain
+        // getItem_type() is null for an "ear" item (a real PvP-trophy item, or -- found while
+        // debugging an unrelated item-format gap -- an item GoMule misreads as one because it
+        // landed on the "this is an ear" flag bit while actually misaligned). Either way it's a
+        // real, reachable case, not just a parsing bug's fault: nothing here needs item_type for
+        // an ear, so just skip the keychain check instead of crashing the whole character view
+        // over an icon lookup for one item.
+        if ("kch".equals(pItem.getItem_type())) // keychain
             image = "invkey";
         if (pItem.getItemName().equals("ÿc4Nightshade") && pItem.isUnique()) {
             image = "invch6";
