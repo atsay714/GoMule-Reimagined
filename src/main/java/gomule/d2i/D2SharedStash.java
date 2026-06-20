@@ -35,7 +35,12 @@ public class D2SharedStash extends D2ItemListAdapter {
     // turned out not to be stored as regular items at all, just one real example so far -- and
     // there's no reliable way to resync mid-pane once that happens (see D2Character's own comment
     // for why). Every other pane, and everything read in the failing pane before the failure,
-    // is kept and shown instead of losing the whole stash; saving is refused (saveInternal()).
+    // is kept and shown instead of losing the whole stash. Unlike D2Character, this doesn't block
+    // saving outright: each incomplete pane's exact original bytes are preserved (see
+    // D2SharedStashPane.getOriginalBytes()) and written back byte-for-byte regardless of its
+    // (empty, or partially-read) in-memory item list, so editing and saving the rest of the
+    // stash is still safe -- saveInternal() only refuses if an incomplete pane is somehow missing
+    // its preserved bytes, which a normal read never produces.
     public boolean isItemsIncomplete() {
         return panes.stream().anyMatch(D2SharedStashPane::isIncomplete);
     }
@@ -101,9 +106,17 @@ public class D2SharedStash extends D2ItemListAdapter {
 
     @Override
     protected void saveInternal(D2Project d2Project) {
-        if (isItemsIncomplete()) {
-            throw new RuntimeException(
-                    "Cannot save " + iFileName + ": its item list did not fully load (" + getItemsIncompleteReason() + ")");
+        // Every incomplete pane must carry its preserved original bytes -- D2SharedStashReader
+        // always sets them when it marks a pane incomplete, so this only fires if some other,
+        // not-yet-existing code path produces an incomplete pane without them. Refuse rather than
+        // silently write back an empty/truncated pane in that case.
+        Optional<D2SharedStashPane> unsafePane = panes.stream()
+                .filter(D2SharedStashPane::isIncomplete)
+                .filter(p -> p.getOriginalBytes() == null)
+                .findFirst();
+        if (unsafePane.isPresent()) {
+            throw new RuntimeException("Cannot save " + iFileName + ": its item list did not fully load ("
+                    + unsafePane.get().getIncompleteReason() + ") and its original bytes weren't preserved");
         }
         if (d2Project != null) D2Backup.backup(d2Project, iFileName, new D2BitReader(originalContent.clone()));
         sharedStashWriter.write(this);
@@ -119,23 +132,30 @@ public class D2SharedStash extends D2ItemListAdapter {
         private final D2Item[][] paneGrid;
         private final int gold;
         private final String incompleteReason;
+        private final byte[] originalBytes;
 
-        D2SharedStashPane(List<D2Item> items, D2Item[][] paneGrid, int gold, String incompleteReason) {
+        D2SharedStashPane(List<D2Item> items, D2Item[][] paneGrid, int gold, String incompleteReason, byte[] originalBytes) {
             this.items = items;
             this.paneGrid = paneGrid;
             this.gold = gold;
             this.incompleteReason = incompleteReason;
+            this.originalBytes = originalBytes;
         }
 
         public static D2SharedStashPane fromItems(List<D2Item> items, int gold) {
-            return new D2SharedStashPane(items, constructPaneGrid(items), gold, null);
+            return new D2SharedStashPane(items, constructPaneGrid(items), gold, null, null);
         }
 
         // Used when this pane's item list didn't fully parse -- see D2SharedStashReader's comment
         // for why a failure partway through can't be resynced, only stopped at. Everything read
-        // before the failure is kept, same as D2Character's per-item partial load.
-        public static D2SharedStashPane fromItemsPartial(List<D2Item> items, int gold, String incompleteReason) {
-            return new D2SharedStashPane(items, constructPaneGrid(items), gold, incompleteReason);
+        // before the failure is kept and shown, same as D2Character's per-item partial load, but
+        // originalBytes (this pane's exact bytes in the real file, found independently of how its
+        // contents got interpreted -- see D2SharedStashReader) is what actually gets written back
+        // on save, regardless of what's in items: there's no way to write back a correct
+        // reconstruction of a pane GoMule doesn't fully understand, so the safe thing is to leave
+        // it untouched rather than risk corrupting or truncating it.
+        public static D2SharedStashPane fromItemsPartial(List<D2Item> items, int gold, String incompleteReason, byte[] originalBytes) {
+            return new D2SharedStashPane(items, constructPaneGrid(items), gold, incompleteReason, originalBytes);
         }
 
         public boolean isIncomplete() {
@@ -144,6 +164,12 @@ public class D2SharedStash extends D2ItemListAdapter {
 
         public String getIncompleteReason() {
             return incompleteReason;
+        }
+
+        // Non-null exactly when isIncomplete() -- see fromItemsPartial()'s comment. Used by
+        // D2SharedStashWriter to write this pane back verbatim instead of reconstructing it.
+        public byte[] getOriginalBytes() {
+            return originalBytes;
         }
 
         private static D2Item[][] constructPaneGrid(List<D2Item> items) {
@@ -215,16 +241,20 @@ public class D2SharedStash extends D2ItemListAdapter {
             item.setCharLvl(75);
             List<D2Item> items = new ArrayList<>(this.items);
             items.add(item);
-            // Preserves incompleteReason (rather than going through fromItems(), which would
-            // reset it to "complete") -- editing a pane that didn't fully load doesn't make the
-            // part that failed to load any more loaded.
-            return new D2SharedStashPane(items, constructPaneGrid(items), gold, incompleteReason);
+            // Preserves incompleteReason and originalBytes (rather than going through
+            // fromItems(), which would reset both to "complete") -- editing a pane that didn't
+            // fully load doesn't make the part that failed to load any more loaded, and
+            // originalBytes is what actually gets saved for an incomplete pane regardless of
+            // this edit (see fromItemsPartial()'s comment) -- there's no real, supported way to
+            // add an item to one of these in the current UI, but if it ever happens, saving
+            // silently keeping the pane unchanged is the safe outcome, not corrupting it.
+            return new D2SharedStashPane(items, constructPaneGrid(items), gold, incompleteReason, originalBytes);
         }
 
         public D2SharedStashPane removeItem(D2Item item) {
             List<D2Item> items = new ArrayList<>(this.items);
             items.remove(item);
-            return new D2SharedStashPane(items, constructPaneGrid(items), gold, incompleteReason);
+            return new D2SharedStashPane(items, constructPaneGrid(items), gold, incompleteReason, originalBytes);
         }
     }
 

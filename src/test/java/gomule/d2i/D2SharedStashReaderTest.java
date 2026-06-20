@@ -96,13 +96,26 @@ public class D2SharedStashReaderTest {
     // item. D2SharedStashReader's partial-load fallback (mirroring D2Character's) keeps both as
     // empty, clearly-marked-incomplete panes instead of losing every pane, including the five
     // perfectly good ones.
+    //
+    // Originally, isItemsIncomplete() also blocked saving outright -- but a real player ran into
+    // exactly that: wanting to move an item between the 5 working tabs, but unable to save *any*
+    // change because the 2 broken tabs made the whole stash refuse to save. Fixed by having
+    // D2SharedStashReader capture each incomplete pane's exact original bytes (found the same
+    // offset-independent way as the pane boundaries themselves) and having D2SharedStashWriter
+    // write those back verbatim instead of attempting a reconstruction GoMule doesn't have enough
+    // understanding of these 2 tabs to get right. Confirmed via a full save-and-reread round trip
+    // below: the 5 working panes save and reread correctly, and the 2 broken panes' bytes are
+    // byte-for-byte identical to the original file, both immediately after saving and again after
+    // a fresh read of the saved file.
     @Test
-    public void secondRealWorldStashWithConvertedTabsLoadsPartially() throws Exception {
+    public void secondRealWorldStashWithConvertedTabsLoadsPartiallyAndSavesTheRestSafely() throws Exception {
         D2TxtFile.constructTxtFiles("./d2111");
-        String filename = new java.io.File(
-                Resources.getResource("sharedStash/ModernSharedStashSoftCoreV2.d2i").toURI())
-                .getAbsolutePath();
-        D2SharedStash stash = new D2SharedStashReader().readStash(filename);
+        byte[] originalBytes = Resources.toByteArray(Resources.getResource("sharedStash/ModernSharedStashSoftCoreV2.d2i"));
+        java.io.File tempFile = java.io.File.createTempFile("ModernSharedStashSoftCoreV2", ".d2i");
+        tempFile.deleteOnExit();
+        java.nio.file.Files.write(tempFile.toPath(), originalBytes);
+
+        D2SharedStash stash = new D2SharedStashReader().readStash(tempFile.getAbsolutePath());
 
         assertEquals(7, stash.getPanes().size());
         assertTrue(stash.isItemsIncomplete());
@@ -119,11 +132,40 @@ public class D2SharedStashReaderTest {
 
         assertTrue(stash.getPane(5).isIncomplete());
         assertEquals(0, stash.getPane(5).getItems().size());
+        assertNotNull(stash.getPane(5).getOriginalBytes());
         assertTrue(stash.getPane(6).isIncomplete());
         assertEquals(0, stash.getPane(6).getItems().size());
+        assertNotNull(stash.getPane(6).getOriginalBytes());
 
-        Exception saveException = assertThrows(RuntimeException.class, () -> stash.saveInternal(null));
-        assertTrue(saveException.getMessage().contains("did not fully load"));
+        // Find pane 5 and 6's exact byte ranges in the original file directly (independently of
+        // the reader under test), to check their preserved bytes against, below.
+        int[] markerOffsets = new D2BitReader(originalBytes.clone()).findBytes(D2SharedStashReader.STASH_HEADER_START);
+        byte[] originalPane5Bytes = java.util.Arrays.copyOfRange(originalBytes, markerOffsets[5], markerOffsets[6]);
+        byte[] originalPane6Bytes = java.util.Arrays.copyOfRange(originalBytes, markerOffsets[6], originalBytes.length);
+        assertArrayEquals(originalPane5Bytes, stash.getPane(5).getOriginalBytes());
+        assertArrayEquals(originalPane6Bytes, stash.getPane(6).getOriginalBytes());
+
+        stash.saveInternal(null); // must not throw -- this is the fix
+
+        byte[] savedBytes = java.nio.file.Files.readAllBytes(tempFile.toPath());
+        int[] savedMarkerOffsets = new D2BitReader(savedBytes.clone()).findBytes(D2SharedStashReader.STASH_HEADER_START);
+        assertEquals(7, savedMarkerOffsets.length);
+        assertArrayEquals(originalPane5Bytes, java.util.Arrays.copyOfRange(savedBytes, savedMarkerOffsets[5], savedMarkerOffsets[6]));
+        assertArrayEquals(originalPane6Bytes, java.util.Arrays.copyOfRange(savedBytes, savedMarkerOffsets[6], savedBytes.length));
+
+        D2SharedStash reread = new D2SharedStashReader().readStash(tempFile.getAbsolutePath());
+        assertEquals(7, reread.getPanes().size());
+        assertTrue(reread.isItemsIncomplete());
+        assertEquals(45, reread.getPane(0).getItems().size());
+        assertEquals(850000, reread.getPane(0).getGold());
+        assertEquals(50, reread.getPane(1).getItems().size());
+        assertEquals(46, reread.getPane(2).getItems().size());
+        assertEquals(44, reread.getPane(3).getItems().size());
+        assertEquals(32, reread.getPane(4).getItems().size());
+        assertEquals(0, reread.getPane(5).getItems().size());
+        assertTrue(reread.getPane(5).isIncomplete());
+        assertEquals(0, reread.getPane(6).getItems().size());
+        assertTrue(reread.getPane(6).isIncomplete());
     }
 
     private List<String> getItemDumps(D2SharedStash.D2SharedStashPane pane) {

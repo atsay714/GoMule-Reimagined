@@ -6,6 +6,7 @@ import gomule.item.D2Item;
 import gomule.util.D2BitReader;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 public class D2SharedStashReader {
@@ -19,28 +20,34 @@ public class D2SharedStashReader {
     public D2SharedStash readStash(String filename, D2BitReader bitReader) throws Exception {
         int[] stashHeaderOffsets = bitReader.findBytes(STASH_HEADER_START);
         if (stashHeaderOffsets.length > 7) throw new RuntimeException("Stash unsupported");
+        byte[] fileContent = bitReader.getFileContent();
         List<D2SharedStashPane> result = new ArrayList<>();
         for (int paneIndex = 0; paneIndex < stashHeaderOffsets.length; paneIndex++) {
-            bitReader.set_byte_pos(stashHeaderOffsets[paneIndex]);
-            // Each pane's start offset above was found by scanning the raw bytes for the
-            // "55AA55AA" marker up front, independent of how any earlier pane's contents get
-            // interpreted -- so a pane that fails to parse (its own try/catch below) doesn't
-            // prevent finding or reading whatever panes come after it; only that one pane's
-            // remaining items are lost. A failure reading the header itself, before any items
-            // are read, is treated the same way: keep an empty, marked-incomplete pane and move
-            // on to the next, instead of losing every pane already read or aborting before
-            // trying the rest.
+            int paneStart = stashHeaderOffsets[paneIndex];
+            // Each pane's start offset (and so, each pane's exact byte span) is known up front by
+            // scanning the raw bytes for the "55AA55AA" marker, independent of how any pane's
+            // contents get interpreted -- so a pane that fails to parse (the try/catch below)
+            // doesn't prevent finding or reading whatever panes come after it, and originalBytes
+            // (this pane's exact span, used by D2SharedStashPane.isIncomplete() panes to save
+            // back byte-for-byte instead of attempting -- and risking corrupting -- a
+            // reconstruction GoMule doesn't have enough understanding to get right; see
+            // fromItemsPartial()'s comment) is always available even when the pane's own header
+            // or item count turns out to be garbage.
+            int paneEnd = (paneIndex + 1 < stashHeaderOffsets.length) ? stashHeaderOffsets[paneIndex + 1] : fileContent.length;
+            byte[] originalBytes = Arrays.copyOfRange(fileContent, paneStart, paneEnd);
+            bitReader.set_byte_pos(paneStart);
             try {
-                result.add(readSharedStashPane(bitReader, filename));
+                result.add(readSharedStashPane(bitReader, filename, originalBytes));
             } catch (Exception pEx) {
                 result.add(D2SharedStashPane.fromItemsPartial(new ArrayList<>(), 0,
-                        "Pane " + (paneIndex + 1) + " of " + stashHeaderOffsets.length + " failed to parse: " + pEx));
+                        "Pane " + (paneIndex + 1) + " of " + stashHeaderOffsets.length + " failed to parse: " + pEx,
+                        originalBytes));
             }
         }
-        return new D2SharedStash(filename, result, bitReader.getFileContent());
+        return new D2SharedStash(filename, result, fileContent);
     }
 
-    private D2SharedStashPane readSharedStashPane(D2BitReader bitReader, String filename) throws Exception {
+    private D2SharedStashPane readSharedStashPane(D2BitReader bitReader, String filename, byte[] originalBytes) throws Exception {
         int stashPaneStart = bitReader.get_byte_pos();
         D2SharedStash.Header header = D2SharedStash.Header.fromBytes(bitReader);
         // Same version drift as the .d2s character format (see D2Character.readChar() and
@@ -65,7 +72,7 @@ public class D2SharedStashReader {
             } catch (Exception pEx) {
                 String reason = "Item " + (i + 1) + " of " + numItems + " failed to parse: " + pEx;
                 try {
-                    return D2SharedStashPane.fromItemsPartial(result, header.getGold(), reason);
+                    return D2SharedStashPane.fromItemsPartial(result, header.getGold(), reason, originalBytes);
                 } catch (Exception pGridEx) {
                     // Building the grid for the items read so far failed too (e.g. one of them
                     // has an overlapping/corrupt position, itself a symptom of the same
@@ -73,7 +80,7 @@ public class D2SharedStashReader {
                     // rather than letting this escape and be mistaken, by the per-pane catch in
                     // readStash(), for a completely different pane's failure.
                     return D2SharedStashPane.fromItemsPartial(new ArrayList<>(), header.getGold(),
-                            reason + "; also failed to keep the items read before that: " + pGridEx);
+                            reason + "; also failed to keep the items read before that: " + pGridEx, originalBytes);
                 }
             }
         }
