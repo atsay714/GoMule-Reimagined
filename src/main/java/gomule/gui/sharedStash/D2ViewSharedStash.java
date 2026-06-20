@@ -108,6 +108,17 @@ public class D2ViewSharedStash extends JInternalFrame implements D2ItemContainer
             } else if (sharedStash.isHC()) {
                 lTitle += " (HC)";
             }
+            if (sharedStash.isItemsIncomplete()) {
+                // Items loaded up to the point of failure are still shown (see
+                // D2SharedStash.isItemsIncomplete()'s comment) -- saving is refused separately, in
+                // D2SharedStash.saveInternal(), so this is purely informational. There's no status
+                // label here the way D2ViewChar has, so this goes in the window title instead --
+                // also surfaced as a tooltip since the reason text is usually too long for a title.
+                lTitle += " [LOADED PARTIALLY]";
+                setToolTipText("Loaded partially -- saving is disabled. " + sharedStash.getItemsIncompleteReason());
+            } else {
+                setToolTipText(null);
+            }
         }
         setTitle(lTitle);
         sharedStashPanel.build();

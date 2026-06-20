@@ -514,6 +514,37 @@ public class D2Item implements Comparable, D2ItemInterface {
         if ("rvl".equals(item_type) && usesPostV99ItemFormat()) {
             pFile.skipBits(8);
         }
+        // Same shape again, found the same way, in a real shared stash this time: a regular
+        // Rejuvenation Potion ("rvs", distinct from the Full Rejuvenation Potion above) needs 16
+        // extra trailing bits, not 8 -- brute-force-confirmed as the only offset, out of more
+        // than 200 tried, that produced a real, recognizable next item (three runes, evenly
+        // spaced at the fixed 88-bit rune item length, ruling out coincidence). What these bits
+        // hold is still unknown.
+        if ("rvs".equals(item_type) && usesPostV99ItemFormat()) {
+            pFile.skipBits(16);
+        }
+        // Same shape again, also found in the same real shared stash: "Orb of Infusion" (a
+        // Reimagined-specific consumable) needs 8 extra trailing bits -- brute-force-confirmed
+        // the same way, three runes evenly spaced at the fixed 88-bit rune item length.
+        if ("ooi".equals(item_type) && usesPostV99ItemFormat()) {
+            pFile.skipBits(8);
+        }
+        // A rune or gem sitting loose at the top level (location != 6, i.e. not socketed into
+        // another item) needs 8 extra trailing bits nothing else reads -- brute-force-confirmed
+        // the same way as the other quirks here, in the same real shared stash, immediately
+        // after the "rvs"/"ooi" fixes above (a free rune, then later a free "Ruby" gem). NOT
+        // applied when location == 6 (socketed): that case already gets its own +8 from the
+        // socket-recursion loop's skip (this file), confirmed via two real runewords (Love,
+        // Edge) with actual runes socketed into them -- adding both would double count. Why a
+        // loose rune/gem needs this only outside a socket is still unknown.
+        // Checks iType directly rather than the iGem field: this Reimagined version's gems have
+        // type2 "pgem", not one of the "gem0".."gem4" tiers iGem's own check requires, so iGem is
+        // never actually set to true for a real gem here (a separate, pre-existing gap -- not
+        // touched here since fixing it could affect other iGem-dependent behavior beyond this).
+        boolean isLooseRuneOrGem = (iRune || (iType != null && iType.startsWith("gem"))) && location != 6;
+        if (isLooseRuneOrGem && usesPostV99ItemFormat()) {
+            pFile.skipBits(8);
+        }
         // Elemental Facets (see isElementalFacet()) each carry exactly 48 extra trailing bits
         // that nothing above reads -- confirmed in the current (post-v99) format via three
         // independent real characters (Autumn, Rime and Thunder Facet, each appearing both
@@ -524,19 +555,23 @@ public class D2Item implements Comparable, D2ItemInterface {
             pFile.skipBits(48);
         }
         // Flag 29 (never previously checked anywhere in this codebase) is set on every item seen
-        // so far that grants a skill via a randomly-rolled property (func 21 in properties.txt,
-        // e.g. "magicskill": a random class skill from a given tab) -- confirmed across two real
-        // characters' full inventories: every elemental Facet (isElementalFacet(), whose skill is
-        // fixed, not randomly rolled) has it set, and so does a real unique ring ("Sling", whose
-        // "magicskill" property -- a randomly-rolled class skill -- needed 56 extra trailing bits
-        // nothing else read, brute-force-confirmed as the only offset out of ~100 tried that
-        // produced a real, recognizable next item: a "Gem Bag", which is otherwise missing
-        // entirely and instead corrupts the next several items into "Ear"-shaped garbage).
-        // Facets already get their own, different (48-bit) skip above; this is for everything
-        // else that sets flag 29 -- still just one confirmed real item, so the 56-bit figure may
-        // not generalize to every flag-29 item. What these bits hold is still unknown.
+        // so far that grants a skill via a property that names or picks one (properties.txt func
+        // 21 or 22) -- confirmed across two real characters' full inventories and a real shared
+        // stash: every elemental Facet (isElementalFacet(), whose skill is fixed, not randomly
+        // rolled, func 11) has it set, and so does a real unique ring ("Sling") and a real unique
+        // pair of gauntlets ("Steelrend"). Facets already get their own, different (48-bit) skip
+        // above; the other two needed different amounts from each other too -- Sling (which has
+        // "magicskill", func 21: a class skill randomly picked from a whole tab at generation
+        // time) needed 56 extra trailing bits, but Steelrend (which only has "aura", func 22: a
+        // fixed, named skill) needed 52, not 56 -- both brute-force-confirmed as the only offset
+        // out of more than 80 tried that produced a real, recognizable next item (a "Gem Bag" for
+        // Sling; a real unique, "Hallowed Redeemer", for Steelrend) rather than "Ear"-shaped
+        // garbage. hasRandomlyPickedSkillProperty() (this file) tells the two cases apart by
+        // checking for a func-21 property specifically -- still only two confirmed real items, so
+        // this may not be the full picture for every flag-29 item. What these bits hold is still
+        // unknown.
         if (check_flag(29) && !isElementalFacet() && usesPostV99ItemFormat()) {
-            pFile.skipBits(56);
+            pFile.skipBits(hasRandomlyPickedSkillProperty() ? 56 : 52);
         }
     }
 
@@ -795,6 +830,53 @@ public class D2Item implements Comparable, D2ItemInterface {
         }
     }
 
+    // A threshold-bonus property with no rolled range (only a fixed "apar" param, e.g. a set
+    // item's "cold-len" always being exactly 300) still needs a stored base value if its
+    // underlying stat computes its real effect from that value at runtime (itemstatcost.txt's
+    // "op" column, e.g. "att/lvl" -> item_tohit_perlevel, "+X to Attack Rating per level" --
+    // confirmed real via Angelic Halo, where skipping it desynced the next property list).
+    // A fixed-param stat with no such computation (no "op") has nothing further to derive at
+    // runtime and isn't stored at all -- confirmed real via Death Knight's Demon Blade, where
+    // including an (absent) list for "cold-len" desynced everything after it.
+    private boolean needsStoredBaseValue(String pPropertyCode) {
+        if (pPropertyCode.equals("")) return false;
+        D2TxtFileItemProperties propRow = D2TxtFile.PROPS.searchColumns("code", pPropertyCode);
+        if (propRow == null) return false;
+        String statName = propRow.get("stat1");
+        if (statName.equals("")) return false;
+        D2TxtFileItemProperties statRow = D2TxtFile.ITEM_STAT_COST.searchColumns("Stat", statName);
+        return statRow != null && !statRow.get("op").equals("");
+    }
+
+    // Distinguishes the two confirmed flag-29 cases (see this file's other flag-29 comment):
+    // "magicskill" (properties.txt func 21 -- a class skill randomly picked from a whole tab at
+    // generation time) needs 4 more trailing bits than a plain named skill grant like "oskill" or
+    // "aura" (func 22), presumably to store which skill the random pick landed on. Checks every
+    // property slot this item's recipe (unique or set) could use; uniqueitems.txt goes up to
+    // prop12, setitems.txt up to prop9 plus the five threshold slots' "a"/"b" pairs.
+    private boolean hasRandomlyPickedSkillProperty() {
+        D2TxtFileItemProperties recipeRow = iUnique
+                ? D2TxtFile.UNIQUES.searchByID(unique_id)
+                : (iSet ? iSetItemRow : null);
+        if (recipeRow == null) return false;
+        for (int x = 1; x <= 12; x++) {
+            if (propertyUsesFunc21(recipeRow.get("prop" + x))) return true;
+        }
+        if (iSet) {
+            for (int x = 1; x <= 5; x++) {
+                if (propertyUsesFunc21(recipeRow.get("aprop" + x + "a"))) return true;
+                if (propertyUsesFunc21(recipeRow.get("aprop" + x + "b"))) return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean propertyUsesFunc21(String pPropertyCode) {
+        if (pPropertyCode.equals("")) return false;
+        D2TxtFileItemProperties propRow = D2TxtFile.PROPS.searchColumns("code", pPropertyCode);
+        return propRow != null && "21".equals(propRow.get("func1"));
+    }
+
     private void addSetProperties(D2TxtFileItemProperties fullsetRow) {
 
         for (int x = 2; x < 6; x++) {
@@ -960,15 +1042,21 @@ public class D2Item implements Comparable, D2ItemInterface {
         // player has on right now), which can go up and down as gear changes, but the bonus
         // values themselves -- once rolled -- are stored permanently regardless of whether
         // they're presently contributing. The number of stored lists instead matches the number
-        // of non-empty "aprop<N>a" threshold columns this specific set item has in setitems.txt
-        // (1 through 5; if a threshold has no bonus defined for this item at all, no list was
-        // ever rolled or stored for it). Confirmed against two real set items: Immortal King's
-        // Stone Crusher (lSet all five thresholds: 0,1,1,1,1 -- i.e. missing the *lowest* one --
-        // but all five aprop columns are non-empty, and reading five lists, not four, was
-        // required) and Ebony Plate of Evil (lSet 0,0,1,1,0 -- two thresholds active -- but only
-        // two aprop columns (2 and 3) are non-empty, and reading exactly those two, not four, was
-        // required). Both contradict "read one list per active lSet flag" or "read up to the
-        // highest active flag" -- only "one list per non-empty recipe column" fit both.
+        // of threshold slots (1 through 5, "a" and "b" each) that actually roll a random value
+        // for this specific set item in setitems.txt -- confirmed against three real set items:
+        // Immortal King's Stone Crusher (lSet all five thresholds: 0,1,1,1,1 -- i.e. missing the
+        // *lowest* one -- but all five thresholds roll a value, and reading five lists, not
+        // four, was required), Ebony Plate of Evil (lSet 0,0,1,1,0 -- two thresholds active --
+        // but only two thresholds (2 and 3) roll a value, and reading exactly those two, not
+        // four, was required), and Death Knight's Demon Blade (three thresholds have a property
+        // at all, but the middle one, "cold-len", only ever sets a fixed value -- apar2a, no
+        // amin2a/amax2a -- nothing to roll, so nothing was stored for it; treating it the same
+        // as the other two and reading three lists decoded plausible-looking but wrong values
+        // for the third, eventually hitting a stat with no "Save Bits" at all that can only
+        // appear in the file from a misread position like this). All three contradict "read one
+        // list per active lSet flag", "read up to the highest active flag", and "one list per
+        // threshold with any property at all" -- only "one list per threshold that rolls a
+        // value" fits all three.
         // A real v99 shared-stash fixture (predating this discovery, from issue #1) breaks under
         // that rule -- it stores bonus lists only for thresholds the lSet flags actually mark
         // active, same as this code always assumed before now -- so the old behavior is kept for
@@ -976,7 +1064,11 @@ public class D2Item implements Comparable, D2ItemInterface {
         if (quality == 5) {
             if (usesPostV99ItemFormat() && iSetItemRow != null) {
                 for (int x = 1; x <= 5; x++) {
-                    if (!iSetItemRow.get("aprop" + x + "a").equals("")) {
+                    boolean rollsAValue = !iSetItemRow.get("amin" + x + "a").equals("")
+                            || !iSetItemRow.get("amin" + x + "b").equals("")
+                            || needsStoredBaseValue(iSetItemRow.get("aprop" + x + "a"))
+                            || needsStoredBaseValue(iSetItemRow.get("aprop" + x + "b"));
+                    if (rollsAValue) {
                         readProperties(pFile, x + 1);
                     }
                 }
@@ -988,33 +1080,25 @@ public class D2Item implements Comparable, D2ItemInterface {
                 }
             }
         }
-        // The three trailing bits below (socketed, unconditional, ethereal) were each validated
-        // independently against real characters that only ever had one of iSocketed/iEthereal
-        // true at a time (Edge/Blasthammer for socketed-only, Arreat's Face/Spectral Slayer for
-        // ethereal-only) -- never both. A real ethereal socketed runeword (a mercenary's
-        // "Wyrmhide", 4 sockets filled with El/Sol/Dol/Lo runes) showed that when BOTH are true,
-        // the three bits below collapse to just one, not three: brute-force scanning the raw
-        // bytes for where its sockets actually start (confirmed real by decoding all 4 runes
-        // correctly, at the expected fixed item-length intervals) found exactly 2 fewer bits than
-        // independently summing all three flags predicts. In other words the total here is 1 bit
-        // when iSocketed and iEthereal agree (both false, or -- newly confirmed -- both true),
-        // and 2 bits when they disagree (exactly one of the two), an XOR rather than a sum. Which
-        // specific bit(s) below are the "same" bit in the real format when both flags are true is
-        // still unknown -- only the net count is confirmed.
-        if (iSocketed && iEthereal) {
-            if (usesPostV99ItemFormat()) {
-                pFile.skipBits(1);
-            }
-        } else {
-            if (iSocketed && usesPostV99ItemFormat()) {
-                pFile.skipBits(1);
-            }
-            if (usesPostV99ItemFormat()) {
-                pFile.skipBits(1);
-            }
-            if (iEthereal && usesPostV99ItemFormat()) {
-                pFile.skipBits(1);
-            }
+        // This single trailing bit was previously modeled as three separate ones -- one if
+        // iSocketed, one unconditional, one if iEthereal -- on the theory that a real ethereal
+        // socketed runeword (a mercenary's "Wyrmhide") needing only 1 bit instead of the naively-
+        // summed 3 meant the two flags' bits "collapse" into each other specifically when BOTH
+        // are true (an XOR of the two flags, in other words), while every previously-validated
+        // single-flag case (Edge/Blasthammer for socketed-only, Arreat's Face/Spectral Slayer for
+        // ethereal-only) still needed 2. That theory was wrong: every one of those single-flag
+        // validations had only ever been checked by confirming the *next* item still decoded,
+        // which D2Item's automatic round-up to the next byte boundary can mask a 1-bit error
+        // under -- and in every one of those cases, it was. A real unique armor in a shared stash
+        // ("Adamantine Mail", socketed but not ethereal) exposed the same 1-bit error landing on
+        // a byte boundary that didn't absorb it: brute-force scanning its real next item (a real
+        // unique armor, "Red Dragon Scales") found exactly 1 bit fewer than the old
+        // "socketed-only = 2 bits" rule gives. The real
+        // rule is just this one always-present bit, regardless of either flag; re-confirmed
+        // against the full existing test suite (including the ethereal+socketed Wyrmhide case
+        // above) with no regressions.
+        if (usesPostV99ItemFormat()) {
+            pFile.skipBits(1);
         }
     }
 
