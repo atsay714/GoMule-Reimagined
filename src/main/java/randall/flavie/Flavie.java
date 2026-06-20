@@ -75,12 +75,28 @@ public class Flavie {
         ArrayList lDataFileObjects = iDataFileBuilder.readDataFileObjects(iDataFile, iDatFile);
         iDirectD2.readDirectD2Files(lDataFileObjects, pFileNames);
 
-        File lDupeDirList = new File("dupelists");
-        File lDupeFiles[] = lDupeDirList.listFiles();
+        iFilters.addAll(loadDupeFilters(new File("dupelists")));
 
+        iReportBuilder.buildReport(pReportTitle, pReportName, pDataFile, pStyleFile, iDatFile, pCountAll, pCountEthereal, pCountStash, pCountChar);
+    }
+
+    // Dupe-list files are entirely optional (user-supplied community lists of known duped items,
+    // cross-referenced if present, as plain .txt files or .txt entries inside .zip archives) --
+    // there's nothing to check against without them, not a reason to fail generating the whole
+    // report. listFiles() returns null (not an empty array) if pDupeDir doesn't exist, isn't a
+    // directory, or can't be listed for any other reason -- "dupelists" itself was never actually
+    // present in this repo (a relative path, so it also depends on GoMule's working directory
+    // being its own install folder, same as d2111/ and projects/ -- see GoMule.bat's comment), so
+    // this NPE'd on every single report for as long as the directory hadn't existed.
+    static ArrayList loadDupeFilters(File pDupeDir) throws Exception {
+        ArrayList lResult = new ArrayList();
+        File lDupeFiles[] = pDupeDir.listFiles();
+        if (lDupeFiles == null) {
+            return lResult;
+        }
         for (int i = 0; i < lDupeFiles.length; i++) {
             if (lDupeFiles[i].getCanonicalPath().endsWith(".txt")) {
-                iFilters.add(new FlavieDupeFilter(lDupeFiles[i].getCanonicalPath(), new FileReader(lDupeFiles[i].getCanonicalPath())));
+                lResult.add(new FlavieDupeFilter(lDupeFiles[i].getCanonicalPath(), new FileReader(lDupeFiles[i].getCanonicalPath())));
             }
             if (lDupeFiles[i].getCanonicalPath().endsWith(".zip")) {
                 ZipFile lZip = new ZipFile(lDupeFiles[i].getCanonicalPath());
@@ -88,14 +104,12 @@ public class Flavie {
                 while (lEnum.hasMoreElements()) {
                     ZipEntry lEntry = (ZipEntry) lEnum.nextElement();
                     if (lEntry.getName().endsWith(".txt")) {
-                        iFilters.add(new FlavieDupeFilter(lDupeFiles[i].getCanonicalPath() + ":" + lEntry.getName(), new InputStreamReader(lZip.getInputStream(lEntry))));
+                        lResult.add(new FlavieDupeFilter(lDupeFiles[i].getCanonicalPath() + ":" + lEntry.getName(), new InputStreamReader(lZip.getInputStream(lEntry))));
                     }
                 }
             }
         }
-
-
-        iReportBuilder.buildReport(pReportTitle, pReportName, pDataFile, pStyleFile, iDatFile, pCountAll, pCountEthereal, pCountStash, pCountChar);
+        return lResult;
     }
 
     public boolean checkForRuneWord(String pName, String pRunes) {
