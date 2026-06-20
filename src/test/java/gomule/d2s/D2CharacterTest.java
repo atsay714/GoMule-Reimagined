@@ -10,6 +10,7 @@ import java.io.File;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -135,38 +136,32 @@ public class D2CharacterTest {
         assertEquals(9, findPropValue(edge, 2)[0]); // part of "All Stats +9"
     }
 
-    // A fourth real character (a Bowazon mule, by far the largest of the four at 233 items) hits
-    // an item-format gap none of the other three exercised: its 115th item, a unique jewel
-    // ("Autumn Facet"), is followed by 48 extra trailing bits nothing else reads -- this is the
-    // "elemental Facet" fix (D2Item.isElementalFacet() and its two call sites). Confirmed real
-    // by checking every property on the jewel itself against its uniqueitems.txt recipe and the
-    // player's real in-game tooltip, and confirmed general (not file-specific) across three
-    // independent Facets in two files, including one appearing as a socketed sub-item (see
-    // bowazon2.d2s's test below). With the fix, this file's full 233-item player inventory now
-    // loads without any partial-load fallback; the character is still reported incomplete because
-    // of a real, separate, not-yet-fixed bug in the mercenary item list (its very first item).
+    // A fourth real character (a Bowazon mule, by far the largest of the four) originally hit an
+    // item-format gap none of the other three exercised: a unique jewel ("Autumn Facet") followed
+    // by 48 extra trailing bits nothing else read -- this is the "elemental Facet" fix
+    // (D2Item.isElementalFacet() and its two call sites). Confirmed real by checking every
+    // property on the jewel itself against its uniqueitems.txt recipe and the player's real
+    // in-game tooltip, and confirmed general (not file-specific) across three independent Facets
+    // in two files, including one appearing as a socketed sub-item (see bowazon2.d2s's test
+    // below). A second, unrelated bug (see that same test) blocked this file's mercenary items
+    // too; with both fixes, this file now loads completely -- every character and mercenary item,
+    // with no partial-load fallback at all.
     @Test
-    public void realVersion105AmazonCharacterWithUnparseableItemLoadsPartially() throws Exception {
+    public void realVersion105AmazonCharacterWithElementalFacetParsesFully() throws Exception {
         D2TxtFile.constructTxtFiles("./d2111");
         D2Character d2Character = new D2Character(
                 new File(Resources.getResource("charFiles/bowazon.d2s").toURI()).getAbsolutePath());
 
         assertEquals("bowazon", d2Character.getCharName());
         assertEquals("Amazon", d2Character.getCharClass());
-        assertTrue(d2Character.isItemsIncomplete());
-        assertTrue(d2Character.getItemsIncompleteReason().contains("Mercenary item 1 of 9 failed to parse"));
-        assertTrue(d2Character.getItemsIncompleteReason().contains("all 233 character items loaded fine"));
+        assertFalse(d2Character.isItemsIncomplete());
 
-        // All 233 player items load now, not just everything before the old jewel gap (232 here,
-        // not 233: getItemList() excludes the one item on the character's cursor, which the
-        // 233-item count in the incomplete-reason text above includes).
         List<D2Item> items = d2Character.getItemList();
-        assertEquals(232, items.size());
+        assertEquals(241, items.size());
         assertTrue(items.stream().anyMatch(i -> i.getItemName().contains("Autumn Facet")));
+        assertEquals(9, d2Character.getMercItemNr());
 
-        Exception saveException = org.junit.jupiter.api.Assertions.assertThrows(
-                RuntimeException.class, () -> d2Character.saveInternal(null));
-        assertTrue(saveException.getMessage().contains("did not fully load"));
+        d2Character.saveInternal(null); // must not throw -- the item list is no longer incomplete
     }
 
     // A second snapshot of the same character (after the player added two more unique jewels --
@@ -180,29 +175,35 @@ public class D2CharacterTest {
     //     (pl_maxdamage_percent, on "Collin's Lesser Might") has only one value where this branch
     //     previously always assumed two, throwing ArrayIndexOutOfBoundsException whenever an item
     //     with that stat was rendered -- a real crash, not a parsing issue.
-    // With the elemental-Facet fix, this file's full 173-item player inventory now loads too --
-    // including "Sadira", a unique bow whose first socket holds a second, independent Rime Facet,
-    // which proved the fix needed a second half: D2Item's socket-recursion loop must NOT also add
-    // its usual one-extra-byte-per-socket skip after a socketed Facet, since the Facet's own
-    // 48-bit skip already covers it (confirmed the same way as the rest of this fix -- adding
-    // both skips broke the very next socket, a Shael Rune, which only decoded correctly with no
-    // extra skip at all after the Facet). Like bowazon.d2s above, the character is still reported
-    // incomplete only because of the same separate, not-yet-fixed mercenary-item bug.
+    // With the elemental-Facet fix, this file's full player inventory loads too -- including
+    // "Sadira", a unique bow whose first socket holds a second, independent Rime Facet, which
+    // proved the fix needed a second half: D2Item's socket-recursion loop must NOT also add its
+    // usual one-extra-byte-per-socket skip after a socketed Facet, since the Facet's own 48-bit
+    // skip already covers it (confirmed the same way as the rest of this fix -- adding both
+    // skips broke the very next socket, a Shael Rune, which only decoded correctly with no extra
+    // skip at all after the Facet).
+    // A third, separate bug then surfaced one level further down, in the mercenary item list: the
+    // three independent "extra trailing bit" flags found earlier (D2Item.readExtend2()'s
+    // iSocketed/unconditional/ethereal bits) were each validated only one at a time -- this file's
+    // mercenary carries "Fortitude" (El+Sol+Dol+Lo, a real runeword) and "Infinity" (Ber+Mal+Ber+
+    // Ist, also real), both socketed AND ethereal at once, a combination none of the earlier
+    // fixtures had. Brute-force scanning Fortitude's actual socket boundary (confirmed real by
+    // decoding all 4 runes correctly, at the fixed item-length intervals real runes always sit at)
+    // showed the three flags combine by XOR, not by sum: 1 bit when iSocketed and iEthereal agree
+    // (including, newly, when both are true -- previously only "both false" was confirmed), 2 bits
+    // when exactly one is true. Which specific bit(s) coincide when both flags are true is still
+    // unknown; only the net count is confirmed. With this third fix, the file loads completely.
     @Test
-    public void secondSnapshotOfAmazonCharacterConfirmsTwoMoreRealFixes() throws Exception {
+    public void secondSnapshotOfAmazonCharacterConfirmsThreeMoreRealFixes() throws Exception {
         D2TxtFile.constructTxtFiles("./d2111");
         D2Character d2Character = new D2Character(
                 new File(Resources.getResource("charFiles/bowazon2.d2s").toURI()).getAbsolutePath());
 
         assertEquals("bowazon", d2Character.getCharName());
-        assertTrue(d2Character.isItemsIncomplete());
-        assertTrue(d2Character.getItemsIncompleteReason().contains("Mercenary item 1 of 9 failed to parse"));
-        assertTrue(d2Character.getItemsIncompleteReason().contains("all 173 character items loaded fine"));
+        assertFalse(d2Character.isItemsIncomplete());
 
-        // 172 here, not 173: getItemList() excludes the one item on the character's cursor (see
-        // the bowazon.d2s test above for the same distinction).
         List<D2Item> items = d2Character.getItemList();
-        assertEquals(172, items.size());
+        assertEquals(181, items.size());
         // Confirms the rvl fix: without it, this item (right after the Full Rejuvenation
         // Potion) was unreachable -- parsing broke down before ever getting here.
         assertTrue(items.stream().anyMatch(i -> "Power of Ice".equals(i.getItemName())));
@@ -216,10 +217,9 @@ public class D2CharacterTest {
         assertEquals(-40, findPropValue(collins, 365)[0]); // pl_mindamage_percent
         D2ItemRenderer.itemDump(collins, true); // must not throw
 
-        // Confirms the socketed-Facet half of the fix: Sadira's first socket is a second, real
-        // Rime Facet (distinct from the unsocketed one already asserted to exist via
-        // findPropValue-style checks elsewhere), and decoding it correctly is what lets the
-        // three Shael Runes after it in the same sockets list decode correctly too.
+        // Confirms the socketed-Facet half of the elemental-Facet fix: Sadira's first socket is a
+        // second, real Rime Facet (distinct from the unsocketed one elsewhere in this file), and
+        // decoding it correctly is what lets the three Shael Runes after it decode correctly too.
         D2Item sadira = items.stream()
                 .filter(i -> "Sadira".equals(i.getItemName()))
                 .findFirst()
@@ -230,6 +230,27 @@ public class D2CharacterTest {
         assertTrue(sadiraSockets.get(1).getItemName().contains("Shael Rune"));
         assertTrue(sadiraSockets.get(2).getItemName().contains("Shael Rune"));
         assertTrue(sadiraSockets.get(3).getItemName().contains("Shael Rune"));
+
+        // Confirms the socketed+ethereal XOR fix, against the mercenary item list this time: both
+        // "Fortitude" and "Infinity" are ethereal, socketed runewords, and both decode to their
+        // exact real recipes.
+        assertEquals(9, d2Character.getMercItemNr());
+        D2Item fortitude = mercItemNamed(d2Character, "Fortitude");
+        assertTrue(fortitude.isEthereal());
+        assertSocketedRuneNamesContain(fortitude, "El Rune", "Sol Rune", "Dol Rune", "Lo Rune");
+        D2Item infinity = mercItemNamed(d2Character, "Infinity");
+        assertTrue(infinity.isEthereal());
+        assertSocketedRuneNamesContain(infinity, "Ber Rune", "Mal Rune", "Ber Rune", "Ist Rune");
+
+        d2Character.saveInternal(null); // must not throw -- the item list is no longer incomplete
+    }
+
+    private static D2Item mercItemNamed(D2Character pCharacter, String pName) {
+        for (int i = 0; i < pCharacter.getMercItemNr(); i++) {
+            D2Item lItem = pCharacter.getMercItem(i);
+            if (lItem.getItemName().contains(pName)) return lItem;
+        }
+        throw new AssertionError("Mercenary item '" + pName + "' not found");
     }
 
     // Socketed runes' getItemName() includes embedded color-code markup and the "(#N)" rune

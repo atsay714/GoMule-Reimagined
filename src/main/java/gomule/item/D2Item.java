@@ -973,14 +973,33 @@ public class D2Item implements Comparable, D2ItemInterface {
                 }
             }
         }
-        if (iSocketed && usesPostV99ItemFormat()) {
-            pFile.skipBits(1);
-        }
-        if (usesPostV99ItemFormat()) {
-            pFile.skipBits(1);
-        }
-        if (iEthereal && usesPostV99ItemFormat()) {
-            pFile.skipBits(1);
+        // The three trailing bits below (socketed, unconditional, ethereal) were each validated
+        // independently against real characters that only ever had one of iSocketed/iEthereal
+        // true at a time (Edge/Blasthammer for socketed-only, Arreat's Face/Spectral Slayer for
+        // ethereal-only) -- never both. A real ethereal socketed runeword (a mercenary's
+        // "Wyrmhide", 4 sockets filled with El/Sol/Dol/Lo runes) showed that when BOTH are true,
+        // the three bits below collapse to just one, not three: brute-force scanning the raw
+        // bytes for where its sockets actually start (confirmed real by decoding all 4 runes
+        // correctly, at the expected fixed item-length intervals) found exactly 2 fewer bits than
+        // independently summing all three flags predicts. In other words the total here is 1 bit
+        // when iSocketed and iEthereal agree (both false, or -- newly confirmed -- both true),
+        // and 2 bits when they disagree (exactly one of the two), an XOR rather than a sum. Which
+        // specific bit(s) below are the "same" bit in the real format when both flags are true is
+        // still unknown -- only the net count is confirmed.
+        if (iSocketed && iEthereal) {
+            if (usesPostV99ItemFormat()) {
+                pFile.skipBits(1);
+            }
+        } else {
+            if (iSocketed && usesPostV99ItemFormat()) {
+                pFile.skipBits(1);
+            }
+            if (usesPostV99ItemFormat()) {
+                pFile.skipBits(1);
+            }
+            if (iEthereal && usesPostV99ItemFormat()) {
+                pFile.skipBits(1);
+            }
         }
     }
 
