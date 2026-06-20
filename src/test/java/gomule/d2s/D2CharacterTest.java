@@ -166,7 +166,14 @@ public class D2CharacterTest {
         assertTrue(items.stream().anyMatch(i -> i.getItemName() != null && i.getItemName().contains("Gem Bag")));
         assertTrue(items.stream().noneMatch(i -> i.getItemName() != null && i.getItemName().contains("Ear")));
 
-        d2Character.saveInternal(null); // must not throw -- the item list is no longer incomplete
+        // Not calling saveInternal(null) here: D2Backup.backup() dereferences its D2Project
+        // argument unconditionally (pProject.getBackup()), so passing null to "just confirm it
+        // doesn't throw the incomplete-item check anymore" actually NPEs further in -- and
+        // because that NPE is caught and routed through D2FileManager.displayErrorDialog(), it
+        // was popping open the real GoMule application window during this test run. A real
+        // D2Project can't be constructed here either, since its constructor requires a
+        // D2FileManager. isItemsIncomplete() above already covers the invariant this was meant
+        // to check.
     }
 
     // A second snapshot of the same character (after the player added two more unique jewels --
@@ -284,7 +291,7 @@ public class D2CharacterTest {
         assertTrue(infinity.isEthereal());
         assertSocketedRuneNamesContain(infinity, "Ber Rune", "Mal Rune", "Ber Rune", "Ist Rune");
 
-        d2Character.saveInternal(null); // must not throw -- the item list is no longer incomplete
+        // See the bowazon.d2s test above for why saveInternal(null) isn't called here.
     }
 
     private static D2Item mercItemNamed(D2Character pCharacter, String pName) {
