@@ -193,8 +193,14 @@ public class D2CharacterTest {
     // (including, newly, when both are true -- previously only "both false" was confirmed), 2 bits
     // when exactly one is true. Which specific bit(s) coincide when both flags are true is still
     // unknown; only the net count is confirmed. With this third fix, the file loads completely.
+    // A fourth, unrelated rendering bug (not a parsing one) showed up once the file loaded fully:
+    // D2PropCollection.combineProps()'s same-stat merge had a stale skip-list missing stat 83
+    // (item_addclassskills), so a real unique amulet here ("Death Emblem", rolling two separate
+    // class-skill bonuses -- +1 Amazon, +1 Necromancer, confirmed against the player's actual
+    // in-game tooltip) had its two properties wrongly summed into one, both the class id and the
+    // value, displaying as a single incorrect "+2 Necromancer Skills" instead of two real lines.
     @Test
-    public void secondSnapshotOfAmazonCharacterConfirmsThreeMoreRealFixes() throws Exception {
+    public void secondSnapshotOfAmazonCharacterConfirmsFourMoreRealFixes() throws Exception {
         D2TxtFile.constructTxtFiles("./d2111");
         D2Character d2Character = new D2Character(
                 new File(Resources.getResource("charFiles/bowazon2.d2s").toURI()).getAbsolutePath());
@@ -216,6 +222,25 @@ public class D2CharacterTest {
         assertEquals(-40, findPropValue(collins, 364)[0]); // pl_maxdamage_percent
         assertEquals(-40, findPropValue(collins, 365)[0]); // pl_mindamage_percent
         D2ItemRenderer.itemDump(collins, true); // must not throw
+
+        // Confirms the item_addclassskills merge fix (D2PropCollection.combineProps()): "Death
+        // Emblem" rolls two separate stat-83 properties -- [class 0 (Amazon), 1] and [class 2
+        // (Necromancer), 1] -- confirmed against the player's real in-game tooltip ("+1 to
+        // Amazon Skills" and "+1 to Necromancer Skills" as two separate lines). Without the fix,
+        // these merged into a single, wrong "[2, 2]" (both the class id and the value summed).
+        D2Item deathEmblem = items.stream()
+                .filter(i -> i.getItemName() != null && i.getItemName().contains("Death Emblem"))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("Death Emblem not found"));
+        List<int[]> classSkillProps = new java.util.ArrayList<>();
+        for (Object propObj : deathEmblem.getPropCollection()) {
+            gomule.item.D2Prop prop = (gomule.item.D2Prop) propObj;
+            if (prop.getPNum() == 83) classSkillProps.add(prop.getPVals());
+        }
+        assertEquals(2, classSkillProps.size());
+        assertTrue(classSkillProps.stream().anyMatch(v -> v[0] == 0 && v[1] == 1)); // +1 Amazon
+        assertTrue(classSkillProps.stream().anyMatch(v -> v[0] == 2 && v[1] == 1)); // +1 Necromancer
+        D2ItemRenderer.itemDump(deathEmblem, true); // must not throw
 
         // Confirms the socketed-Facet half of the elemental-Facet fix: Sadira's first socket is a
         // second, real Rime Facet (distinct from the unsocketed one elsewhere in this file), and

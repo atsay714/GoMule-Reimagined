@@ -112,7 +112,16 @@ public class D2PropCollection extends ArrayList {
                 if (get(x) == get(y)) continue;
 
                 if ((((D2Prop) get(x)).getPNum() == ((D2Prop) get(y)).getPNum()) && (((D2Prop) get(x)).getQFlag() == ((D2Prop) get(y)).getQFlag()) && (((D2Prop) get(x)).getQFlag() == 0)) {
-                    if (((D2Prop) get(x)).getPNum() == 107 || ((D2Prop) get(x)).getPNum() == 97 || ((D2Prop) get(x)).getPNum() == 188 || ((D2Prop) get(x)).getPNum() == 201 || ((D2Prop) get(x)).getPNum() == 198 || ((D2Prop) get(x)).getPNum() == 204)
+                    // Each of these stats stores a [skill/class/tab id, value] pair, not a plain
+                    // value -- addPVals() sums elementwise, so merging two instances with
+                    // different ids (e.g. two separate item_addclassskills props, one per class)
+                    // would silently add the ids together too, both losing one of the two real
+                    // bonuses and corrupting which id the combined value displays under. 83
+                    // (item_addclassskills) was missing from here: a real unique amulet ("Death
+                    // Emblem", +1 Amazon Skills and +1 Necromancer Skills -- two separate stat-83
+                    // properties confirmed via the player's actual in-game tooltip) was merging
+                    // into a single wrong "+2 Necromancer Skills" instead of showing both.
+                    if (((D2Prop) get(x)).getPNum() == 107 || ((D2Prop) get(x)).getPNum() == 97 || ((D2Prop) get(x)).getPNum() == 188 || ((D2Prop) get(x)).getPNum() == 201 || ((D2Prop) get(x)).getPNum() == 198 || ((D2Prop) get(x)).getPNum() == 204 || ((D2Prop) get(x)).getPNum() == 83)
                         continue;
                     ((D2Prop) get(x)).addPVals(((D2Prop) get(y)).getPVals());
                     remove(y);
