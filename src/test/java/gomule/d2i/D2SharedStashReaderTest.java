@@ -168,6 +168,48 @@ public class D2SharedStashReaderTest {
         assertTrue(reread.getPane(6).isIncomplete());
     }
 
+    // A third real shared stash, from a non-DLC character -- confirming that none of the fixes
+    // above (the partial-load fallback, or the byte-preserving save fix) are DLC-specific special
+    // cases or otherwise change behavior for the common, non-DLC case: a real player asked
+    // exactly this question after seeing a DLC stash's "[LOADED PARTIALLY]" indicator, since
+    // non-DLC shared stashes never had the 2 tabs that got converted to hold runes/keys/gems.
+    // Nothing in D2SharedStashReader/Writer checks for "is this DLC" at all -- it's driven purely
+    // by what's actually in the file (here, exactly the original 3 panes, no converted tabs), so
+    // there's no separate code path to verify; this is the same reader/writer, just confirming it
+    // doesn't misfire on the simpler, far more common case.
+    @Test
+    public void thirdRealWorldStashFromNonDlcCharacterLoadsAndSavesFullyWithNoFalsePartialLoad() throws Exception {
+        D2TxtFile.constructTxtFiles("./d2111");
+        byte[] originalBytes = Resources.toByteArray(Resources.getResource("sharedStash/NonDlcSharedStashSoftCoreV2.d2i"));
+        java.io.File tempFile = java.io.File.createTempFile("NonDlcSharedStashSoftCoreV2", ".d2i");
+        tempFile.deleteOnExit();
+        java.nio.file.Files.write(tempFile.toPath(), originalBytes);
+
+        D2SharedStash stash = new D2SharedStashReader().readStash(tempFile.getAbsolutePath());
+
+        assertEquals(3, stash.getPanes().size());
+        assertFalse(stash.isItemsIncomplete());
+        for (int i = 0; i < 3; i++) {
+            assertFalse(stash.getPane(i).isIncomplete(), "pane " + i + " should have loaded completely");
+            assertNull(stash.getPane(i).getOriginalBytes(), "pane " + i + " loaded fine, shouldn't need preserved bytes");
+        }
+        assertEquals(2, stash.getPane(0).getItems().size());
+        assertEquals(2, stash.getPane(1).getItems().size());
+        assertEquals(2, stash.getPane(2).getItems().size());
+        assertTrue(stash.getItemList().stream().anyMatch(i -> "Tome of Town Portal".equals(i.getItemName())));
+        assertTrue(stash.getItemList().stream().anyMatch(i -> "Tome of Identify".equals(i.getItemName())));
+        // Also exercises the Gem Bag fix (D2Item.isLooseRuneOrGem's comment) against a third,
+        // independent real file.
+        assertTrue(stash.getItemList().stream().anyMatch(i -> i.getItemName() != null && i.getItemName().contains("Gem Bag")));
+
+        stash.saveInternal(null); // must not throw
+
+        D2SharedStash reread = new D2SharedStashReader().readStash(tempFile.getAbsolutePath());
+        assertEquals(3, reread.getPanes().size());
+        assertFalse(reread.isItemsIncomplete());
+        assertEquals(6, reread.getItemList().size());
+    }
+
     private List<String> getItemDumps(D2SharedStash.D2SharedStashPane pane) {
         return pane.getItems().stream()
                 .map(it -> D2ItemRenderer.itemDump(it, true).replace("\r", ""))
