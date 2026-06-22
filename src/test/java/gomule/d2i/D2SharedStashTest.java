@@ -7,6 +7,7 @@ import gomule.util.D2BitReader;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -14,6 +15,80 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class D2SharedStashTest {
+
+    // getVisibleTabCount() drives how many stash tabs the UI shows. The Reimagined DLC converted
+    // its last "stackable stash" tabs to a storage format GoMule can't decode, so they load as
+    // trailing incomplete panes (see D2SharedStashReader). The UI hides exactly those -- the panes
+    // stay in the model and are saved back byte-for-byte, they're just not shown as item tabs.
+
+    @Test
+    public void visibleTabCountHidesTrailingIncompletePanes() {
+        // DLC/Modern shape: 5 normal panes + the 2 converted (incomplete) tabs -> 5 shown.
+        D2SharedStash stash = stashWith(complete(), complete(), complete(), complete(), complete(), incomplete(), incomplete());
+        assertEquals(7, stash.getPanes().size());
+        assertEquals(5, stash.getVisibleTabCount());
+    }
+
+    @Test
+    public void visibleTabCountShowsAllWhenNothingIncomplete() {
+        // Non-DLC (3 normal panes) and ordinary all-good stashes are completely untouched.
+        assertEquals(3, stashWith(complete(), complete(), complete()).getVisibleTabCount());
+        assertEquals(7, stashWith(complete(), complete(), complete(), complete(), complete(), complete(), complete()).getVisibleTabCount());
+    }
+
+    @Test
+    public void visibleTabCountOnlyHidesTrailingRunNotMiddleIncompletePanes() {
+        // The tab strip is positional, so a hidden middle tab would leave a gap; real converted
+        // tabs are always trailing. A non-trailing incomplete pane therefore stays visible.
+        D2SharedStash stash = stashWith(complete(), incomplete(), complete(), incomplete(), incomplete());
+        assertEquals(3, stash.getVisibleTabCount());
+    }
+
+    @Test
+    public void visibleTabCountNeverHidesEveryTab() {
+        assertEquals(1, stashWith(incomplete(), incomplete()).getVisibleTabCount());
+    }
+
+    // The "[LOADED PARTIALLY]" warning should fire only for a *visible* tab that failed to load --
+    // not for the DLC's hidden converted tabs, which are incomplete by nature. isItemsIncomplete()
+    // stays the raw-data truth (any pane incomplete) for callers that need it.
+
+    @Test
+    public void noVisibleIncompleteWhenOnlyConvertedTabsAreIncomplete() {
+        D2SharedStash stash = stashWith(complete(), complete(), complete(), complete(), complete(), incomplete(), incomplete());
+        assertTrue(stash.isItemsIncomplete());          // raw truth: the file does have incomplete panes
+        assertFalse(stash.hasVisibleIncompletePane());  // but nothing the user sees is broken
+        assertEquals("", stash.getVisibleIncompleteReason());
+    }
+
+    @Test
+    public void visibleIncompleteWhenANormalTabFailsToLoad() {
+        D2SharedStash stash = stashWith(complete(), incompleteBecause("Item 3 of 12 failed to parse"), complete(), incomplete(), incomplete());
+        assertTrue(stash.hasVisibleIncompletePane());
+        // Only the visible failure is reported -- the hidden converted tabs are excluded.
+        assertEquals("Item 3 of 12 failed to parse", stash.getVisibleIncompleteReason());
+    }
+
+    @Test
+    public void noVisibleIncompleteWhenNothingIncomplete() {
+        assertFalse(stashWith(complete(), complete(), complete()).hasVisibleIncompletePane());
+    }
+
+    private static D2SharedStashPane complete() {
+        return D2SharedStashPane.fromItems(Collections.emptyList(), 0);
+    }
+
+    private static D2SharedStashPane incomplete() {
+        return incompleteBecause("converted stackable tab");
+    }
+
+    private static D2SharedStashPane incompleteBecause(String reason) {
+        return D2SharedStashPane.fromItemsPartial(Collections.emptyList(), 0, reason, new byte[]{1});
+    }
+
+    private static D2SharedStash stashWith(D2SharedStashPane... panes) {
+        return new D2SharedStash("SoftCore.d2i", new ArrayList<>(Arrays.asList(panes)), new byte[0]);
+    }
 
     @Test
     public void testConstruction() {

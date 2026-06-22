@@ -30,6 +30,43 @@ public class D2SharedStash extends D2ItemListAdapter {
         return panes;
     }
 
+    // How many tabs the UI should show. The Reimagined DLC converted its trailing "stackable
+    // stash" tabs to a storage format GoMule can't decode, so they load as incomplete panes (see
+    // D2SharedStashReader). Those are hidden from the tab strip -- but they stay in `panes` and are
+    // written back byte-for-byte on save (see saveInternal()), so this only affects display, never
+    // the file. Only a *trailing* run of incomplete panes is hidden: the tab strip is positional,
+    // so hiding a middle tab would leave a gap, and in every real file these converted tabs are the
+    // last ones. At least one tab always stays visible, even in the degenerate all-incomplete case.
+    public int getVisibleTabCount() {
+        int count = panes.size();
+        while (count > 1 && panes.get(count - 1).isIncomplete()) {
+            count--;
+        }
+        return count;
+    }
+
+    // True only when a *visible* tab failed to load -- a genuine partial-load problem worth warning
+    // the user about. The DLC's converted "stackable stash" tabs are incomplete by nature but
+    // hidden (see getVisibleTabCount()), so they must NOT trigger the warning. isItemsIncomplete()
+    // remains the raw-data truth (any pane incomplete) for callers like the reader tests and save
+    // path that need it.
+    public boolean hasVisibleIncompletePane() {
+        int visible = getVisibleTabCount();
+        for (int i = 0; i < visible; i++) {
+            if (panes.get(i).isIncomplete()) return true;
+        }
+        return false;
+    }
+
+    // The reasons behind hasVisibleIncompletePane(), for the tooltip -- only the visible failures,
+    // excluding the expected/hidden converted tabs that getItemsIncompleteReason() would include.
+    public String getVisibleIncompleteReason() {
+        return panes.subList(0, getVisibleTabCount()).stream()
+                .filter(D2SharedStashPane::isIncomplete)
+                .map(D2SharedStashPane::getIncompleteReason)
+                .collect(Collectors.joining("; "));
+    }
+
     // Mirrors D2Character's isItemsIncomplete()/getItemsIncompleteReason(): a real shared stash
     // can have a tab (or part of one) that fails to parse -- e.g. a "rune/gem" tab whose contents
     // turned out not to be stored as regular items at all, just one real example so far -- and
