@@ -7,7 +7,11 @@ public enum LookAndFeelOptions {
 
     CLASSIC("Classic GoMule", () -> {
         if (System.getProperty("os.name").toLowerCase().contains("mac")) {
-            return "apple.laf.AquaLookAndFeel";
+            // Apple's "apple.laf.AquaLookAndFeel" was part of the old Apple JDK 6 and was removed
+            // long ago; on modern JDKs the macOS Aqua L+F lives at com.apple.laf.AquaLookAndFeel,
+            // which is exactly what the system L+F resolves to. Hardcoding the old name throws
+            // ClassNotFoundException and silently falls back to the Metal L+F on Mac.
+            return UIManager.getSystemLookAndFeelClassName();
         } else {
             return UIManager.getCrossPlatformLookAndFeelClassName();
         }
