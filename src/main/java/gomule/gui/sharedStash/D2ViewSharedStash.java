@@ -108,14 +108,18 @@ public class D2ViewSharedStash extends JInternalFrame implements D2ItemContainer
             } else if (sharedStash.isHC()) {
                 lTitle += " (HC)";
             }
-            if (sharedStash.isItemsIncomplete()) {
-                // Items loaded up to the point of failure are still shown (see
-                // D2SharedStash.isItemsIncomplete()'s comment) -- saving is refused separately, in
-                // D2SharedStash.saveInternal(), so this is purely informational. There's no status
-                // label here the way D2ViewChar has, so this goes in the window title instead --
-                // also surfaced as a tooltip since the reason text is usually too long for a title.
+            if (sharedStash.hasVisibleIncompletePane()) {
+                // Only warn when a *visible* tab failed to load (see
+                // D2SharedStash.hasVisibleIncompletePane()). The DLC's converted "stackable stash"
+                // tabs are incomplete by nature but hidden (see D2SharedStash.getVisibleTabCount()),
+                // so an ordinary DLC stash shows no warning. Items read before the failure are still
+                // shown, and the unread bytes are preserved verbatim on save -- so saving is NOT
+                // disabled; the old "saving is disabled" wording predated that fix. There's no status
+                // label here the way D2ViewChar has, so this goes in the window title instead -- also
+                // surfaced as a tooltip since the reason text is usually too long for a title.
                 lTitle += " [LOADED PARTIALLY]";
-                setToolTipText("Loaded partially -- saving is disabled. " + sharedStash.getItemsIncompleteReason());
+                setToolTipText("Loaded partially -- some items in a visible tab couldn't be read and aren't shown. "
+                        + "They're preserved unchanged when you save. " + sharedStash.getVisibleIncompleteReason());
             } else {
                 setToolTipText(null);
             }

@@ -119,6 +119,10 @@ public class D2SharedStashReaderTest {
 
         assertEquals(7, stash.getPanes().size());
         assertTrue(stash.isItemsIncomplete());
+        // The 2 converted (incomplete) tabs are hidden from the UI; the 5 real tabs remain.
+        assertEquals(5, stash.getVisibleTabCount());
+        // All 5 visible tabs loaded fine, so no misleading "[LOADED PARTIALLY]" warning is shown.
+        assertFalse(stash.hasVisibleIncompletePane());
 
         assertEquals(45, stash.getPane(0).getItems().size());
         assertEquals(850000, stash.getPane(0).getGold());
@@ -189,6 +193,8 @@ public class D2SharedStashReaderTest {
 
         assertEquals(3, stash.getPanes().size());
         assertFalse(stash.isItemsIncomplete());
+        // Non-DLC stashes have no converted tabs, so nothing is hidden -- all 3 tabs stay visible.
+        assertEquals(3, stash.getVisibleTabCount());
         for (int i = 0; i < 3; i++) {
             assertFalse(stash.getPane(i).isIncomplete(), "pane " + i + " should have loaded completely");
             assertNull(stash.getPane(i).getOriginalBytes(), "pane " + i + " loaded fine, shouldn't need preserved bytes");

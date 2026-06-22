@@ -100,16 +100,19 @@ class SharedStashPanelMouseClickHandler extends MouseAdapter {
     }
 
     private Integer getPossibleStashTabClick(int x, int y) {
-        int paneCount = this.sharedStashPanel.getSharedStash().getPanes().size();
+        // Visible (not total) tab count: the DLC's converted "stackable stash" tabs are hidden and
+        // must not be selectable -- clicking their now-empty area returns null. See
+        // SharedStashPanel.getVisibleTabCount() / D2SharedStash.getVisibleTabCount().
+        int visibleTabs = this.sharedStashPanel.getVisibleTabCount();
 
         if (x >= 27 && x <= 462 && y >= 51 && y <= 72) {
-            if ((x <= 87) && (paneCount >= 1)) return 0;
-            if ((x <= 150) && (paneCount >= 2)) return 1;
-            if ((x <= 212) && (paneCount >= 3)) return 2;
-            if ((x <= 275) && (paneCount >= 4)) return 3;
-            if ((x <= 337) && (paneCount >= 5)) return 4;
-            if ((x <= 400) && (paneCount >= 6)) return 5;
-            if (paneCount >= 7) return 6;
+            if ((x <= 87) && (visibleTabs >= 1)) return 0;
+            if ((x <= 150) && (visibleTabs >= 2)) return 1;
+            if ((x <= 212) && (visibleTabs >= 3)) return 2;
+            if ((x <= 275) && (visibleTabs >= 4)) return 3;
+            if ((x <= 337) && (visibleTabs >= 5)) return 4;
+            if ((x <= 400) && (visibleTabs >= 6)) return 5;
+            if (visibleTabs >= 7) return 6;
         }
         return null;
     }

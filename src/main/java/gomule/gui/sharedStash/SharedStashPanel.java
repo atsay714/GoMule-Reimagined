@@ -7,6 +7,7 @@ import gomule.item.D2Item;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 
 import static java.util.Collections.emptyList;
@@ -15,6 +16,14 @@ public class SharedStashPanel extends JPanel {
 
     public static final int BG_WIDTH = 552;
     public static final int BG_HEIGHT = 567;
+
+    // Left x of each of the 7 tab slots, plus the strip's right edge as the final entry; matches
+    // the click regions in SharedStashPanelMouseClickHandler.getPossibleStashTabClick().
+    private static final int[] TAB_X_BOUNDS = {27, 87, 150, 212, 275, 337, 400, 462};
+    private static final int TAB_BAND_TOP = 46;     // inclusive; top of the tab buttons' band
+    private static final int TAB_BAND_BOTTOM = 75;  // exclusive; bottom of that band
+    // A column of empty recessed frame just right of the tab strip, used as the "no tab" texture.
+    private static final int RECESS_SAMPLE_X = 503;
     private final D2FileManager fileManager;
     private final D2ViewSharedStash sharedStashView;
     private int selectedStashPaneIndex = 0;
@@ -36,12 +45,46 @@ public class SharedStashPanel extends JPanel {
     }
 
     public void build() {
+        // A hidden tab must never stay selected -- e.g. if the previously selected index is no
+        // longer visible. Fall back to the first (always-visible) tab.
+        if (getSharedStash() != null && selectedStashPaneIndex >= getVisibleTabCount()) {
+            selectedStashPaneIndex = 0;
+        }
         Image lEmptyBackground = D2ImageCache.getImage("stash" + (selectedStashPaneIndex + 1) + ".png");
         background = fileManager.getGraphicsConfiguration().createCompatibleImage(BG_WIDTH, BG_HEIGHT, Transparency.BITMASK);
         Graphics2D lGraphics = (Graphics2D) background.getGraphics();
         lGraphics.drawImage(lEmptyBackground, 0, 0, this);
-        if (getSharedStash() != null) placeItemsInView();
+        if (getSharedStash() != null) {
+            maskHiddenTabs();
+            placeItemsInView();
+        }
         repaint();
+    }
+
+    // How many tabs to show -- the model hides the DLC's converted "stackable stash" tabs (see
+    // D2SharedStash.getVisibleTabCount()). Returns 0 only when there's no stash connected.
+    public int getVisibleTabCount() {
+        D2SharedStash sharedStash = getSharedStash();
+        return sharedStash == null ? 0 : sharedStash.getVisibleTabCount();
+    }
+
+    // Each stashN.png bakes in all 7 "Shared" tab buttons, so the hidden ones are painted over
+    // with the empty recessed-frame texture sampled from just right of the strip -- making it look
+    // like the stash natively has only the visible number of tabs. Purely cosmetic; no item or
+    // pane data is touched.
+    private void maskHiddenTabs() {
+        int visibleTabs = getVisibleTabCount();
+        if (visibleTabs >= TAB_X_BOUNDS.length - 1) return; // all 7 shown -> nothing to hide
+        if (!(background instanceof BufferedImage)) return;
+        BufferedImage image = (BufferedImage) background;
+        int xStart = TAB_X_BOUNDS[visibleTabs];
+        int xEnd = TAB_X_BOUNDS[TAB_X_BOUNDS.length - 1];
+        for (int y = TAB_BAND_TOP; y < TAB_BAND_BOTTOM; y++) {
+            int recessColor = image.getRGB(RECESS_SAMPLE_X, y);
+            for (int x = xStart; x < xEnd; x++) {
+                image.setRGB(x, y, recessColor);
+            }
+        }
     }
 
     private void placeItemsInView() {
