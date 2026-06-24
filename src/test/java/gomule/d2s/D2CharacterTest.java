@@ -304,6 +304,43 @@ public class D2CharacterTest {
         // See the bowazon.d2s test above for why saveInternal(null) isn't called here.
     }
 
+    // A third snapshot of the same Bowazon mule, later still, was reported by the player as
+    // loading only partially: "Item 164 of 186 failed to parse: ... Error: null (null, null)".
+    // Root cause: an "Orb of Assemblage" ("ooa") carries 8 extra trailing bits nothing read, so
+    // every item after it desynced; the bare NPE-with-null-message came from the desynced next
+    // item huffman-decoding an empty type code, which D2TxtFile.search() can't find. Brute-force
+    // scanning the boundary (the same method as every other quirk in D2Item.readExtend()) showed
+    // +8 bits was the only offset that decoded a real next item -- and "ooa" turned out to be one
+    // of four "elixir"-type ("elix") items this single character carries that ALL need the same
+    // +8: "Orb of Infusion" ("ooi", previously fixed per-code), "Orb of Assemblage" ("ooa"),
+    // "Orb of Socketing" ("oos"), and "Gem Cluster" ("1gc"). That made it the whole "elix" class,
+    // not four separate codes, so readExtend()'s former per-code "ooi" skip is now keyed on the
+    // itemtype instead (see its comment). With that one rule this file loads completely -- all
+    // character and mercenary items, no partial-load fallback.
+    @Test
+    public void thirdSnapshotOfAmazonCharacterWithElixirOrbsParsesFully() throws Exception {
+        D2TxtFile.constructTxtFiles("./d2111");
+        D2Character d2Character = new D2Character(
+                new File(Resources.getResource("charFiles/bowazon3.d2s").toURI()).getAbsolutePath());
+
+        assertEquals("bowazon", d2Character.getCharName());
+        assertEquals("Amazon", d2Character.getCharClass());
+        assertFalse(d2Character.isItemsIncomplete());
+
+        List<D2Item> items = d2Character.getItemList();
+        assertEquals(195, items.size());
+        assertEquals(9, d2Character.getMercItemNr());
+
+        // The three "elix" items whose missing +8 bits each desynced everything after them. (The
+        // fourth, "ooi", is already covered by the bowazon2.d2s test above.) Checked by item code
+        // rather than name because the rendered names carry color-code markup prefixes.
+        assertTrue(items.stream().anyMatch(i -> "ooa".equals(i.getItem_type())), "Orb of Assemblage (ooa) missing");
+        assertTrue(items.stream().anyMatch(i -> "oos".equals(i.getItem_type())), "Orb of Socketing (oos) missing");
+        assertTrue(items.stream().anyMatch(i -> "1gc".equals(i.getItem_type())), "Gem Cluster (1gc) missing");
+        // The desync used to corrupt later items into "Ear"-shaped garbage; confirm none leaked.
+        assertTrue(items.stream().noneMatch(i -> i.getItemName() != null && i.getItemName().contains("Ear")));
+    }
+
     private static D2Item mercItemNamed(D2Character pCharacter, String pName) {
         for (int i = 0; i < pCharacter.getMercItemNr(); i++) {
             D2Item lItem = pCharacter.getMercItem(i);

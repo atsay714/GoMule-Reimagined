@@ -523,10 +523,19 @@ public class D2Item implements Comparable, D2ItemInterface {
         if ("rvs".equals(item_type) && usesPostV99ItemFormat()) {
             pFile.skipBits(16);
         }
-        // Same shape again, also found in the same real shared stash: "Orb of Infusion" (a
-        // Reimagined-specific consumable) needs 8 extra trailing bits -- brute-force-confirmed
-        // the same way, three runes evenly spaced at the fixed 88-bit rune item length.
-        if ("ooi".equals(item_type) && usesPostV99ItemFormat()) {
+        // Same shape again, but generalized to the whole item class once a fourth and fifth
+        // example showed up together. Every Reimagined "elixir"-type item (itemtypes "elix") --
+        // the family that includes "Orb of Infusion" ("ooi"), "Orb of Assemblage" ("ooa"), "Orb
+        // of Socketing" ("oos"), "Gem Cluster" ("1gc"), and a couple dozen more (the other Orbs,
+        // Token of Absolution, the dyes, etc.) -- carries 8 extra trailing bits nothing above
+        // reads. Brute-force-confirmed as the only byte offset, out of 27 tried near each
+        // boundary, that decoded a real, recognizable next item, across all four codes a single
+        // real character actually carried (ooi here is what this started as a per-code "ooi" fix
+        // before ooa/oos/1gc proved it was the whole "elix" class -- folding them into one rule
+        // also avoids the per-code list silently missing the next new Orb a player picks up).
+        // Keyed on iType, not item_type, deliberately: the point is the category, not the code.
+        // What these bits actually hold is still unknown.
+        if ("elix".equals(iType) && usesPostV99ItemFormat()) {
             pFile.skipBits(8);
         }
         // A rune or gem sitting loose at the top level (location != 6, i.e. not socketed into
