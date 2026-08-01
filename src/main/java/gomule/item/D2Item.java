@@ -587,6 +587,21 @@ public class D2Item implements Comparable, D2ItemInterface {
         boolean isLooseRuneOrGem = (iRune || (iType != null && iType.startsWith("gem"))) && location != 6;
         if (isLooseRuneOrGem && usesPostV99ItemFormat()) {
             pFile.skipBits(8);
+            // A loose rune/gem sitting in the Horadric Cube (panel 4 -- see D2FileManager's
+            // stash/inventory/cube panel checks) can need one MORE trailing byte on top of the one
+            // just above, but only when its body lands exactly on a byte boundary -- the identical
+            // dropped-padding-byte quirk the simple potions have (see isSimpleBeltablePotion()'s
+            // comment): the generic end-of-item byte-rounding advances a byte only when there are
+            // leftover bits, so a byte-aligned body silently loses that padding byte and desyncs the
+            // next item. Brute-force-confirmed against a real character with eight runes moved into
+            // the cube (Sur, Zod, Gul, Vex, Ohm, Lo, Jah, Cham): exactly the two that landed
+            // byte-aligned here (Sur, Ohm) needed +8, and the other six needed nothing -- matching
+            // the alignment rule, not the rune tier (an early guess that "high runes" needed it, or
+            // that every cube rune did, was wrong). Runes/gems loose in the inventory or stash
+            // (panel 1/5) are unaffected: only the cube has shown this second byte.
+            if (panel == 4 && (pFile.get_pos() % 8) == 0) {
+                pFile.skipBits(8);
+            }
         }
         // Elemental Facets (see isElementalFacet()) each carry exactly 48 extra trailing bits
         // that nothing above reads -- confirmed in the current (post-v99) format via three

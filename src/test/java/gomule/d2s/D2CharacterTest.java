@@ -372,6 +372,42 @@ public class D2CharacterTest {
         assertTrue(items.stream().noneMatch(i -> i.getItemName() != null && i.getItemName().contains("Ear")));
     }
 
+    // A later snapshot of the same paladin, after eight runes -- Sur, Zod, Gul, Vex, Ohm, Lo, Jah
+    // and Cham, plus a "Latent Black Cleft" charm -- had been moved into the Horadric Cube. The
+    // character stopped loading with the same null-message NullPointerException, because a loose
+    // rune/gem stored in the cube can carry one extra trailing padding byte -- but only when its
+    // body lands byte-aligned, exactly the dropped-padding-byte quirk the simple potions have (see
+    // D2Item.readExtend()'s panel==4 branch). Here that was true for the Sur and Ohm runes but not
+    // the other six, so a first guess that "high runes" (or every cube rune) needed the extra byte
+    // was wrong: it is decided purely by byte alignment. With the alignment-conditional skip all
+    // 101 items load, including every cube rune and the charm sharing the cube.
+    @Test
+    public void paladinWithRunesInCubeParsesFully() throws Exception {
+        D2TxtFile.constructTxtFiles("./d2111");
+        D2Character d2Character = new D2Character(
+                new File(Resources.getResource("charFiles/pally2.d2s").toURI()).getAbsolutePath());
+
+        assertEquals("pally", d2Character.getCharName());
+        assertEquals("Paladin", d2Character.getCharClass());
+        assertFalse(d2Character.isItemsIncomplete());
+
+        List<D2Item> items = d2Character.getItemList();
+        assertEquals(101, items.size());
+
+        // Every one of the eight runes moved into the cube (panel 4) parsed -- both the two that
+        // needed the extra byte (Sur, Ohm) and the six that did not.
+        for (String rune : new String[]{"r29", "r33", "r25", "r26", "r27", "r28", "r31", "r32"}) {
+            assertTrue(items.stream().anyMatch(i -> rune.equals(i.getItem_type()) && i.get_panel() == 4),
+                    "cube rune " + rune + " should have parsed");
+        }
+        // The charm sharing the cube, right after the first byte-aligned rune that used to desync it.
+        assertTrue(items.stream().anyMatch(i -> i.getItemName() != null
+                        && i.getItemName().contains("Latent Black Cleft")),
+                "the charm inside the cube should have parsed");
+        // Confirm the desync didn't leak "Ear"-shaped garbage into any later item.
+        assertTrue(items.stream().noneMatch(i -> i.getItemName() != null && i.getItemName().contains("Ear")));
+    }
+
     private static D2Item mercItemNamed(D2Character pCharacter, String pName) {
         for (int i = 0; i < pCharacter.getMercItemNr(); i++) {
             D2Item lItem = pCharacter.getMercItem(i);
