@@ -216,6 +216,53 @@ public class D2SharedStashReaderTest {
         assertEquals(6, reread.getItemList().size());
     }
 
+    // A fourth real shared stash: a later snapshot of the same Reimagined mod stash as
+    // ModernSharedStashSoftCoreV2.d2i above, after the player had added, among other things, a run
+    // of Antidote Potions ("yps", itemtype "apot") to the first tab. That tab -- pane 0, an
+    // ordinary tab, not one of the DLC-converted rune/gem/key tabs -- stopped loading partway
+    // through: it decoded 14 items and then failed on the 15th with the same null-message
+    // NullPointerException the character-file potion bugs produced, because "apot" was the one
+    // simple beltable-potion class not yet covered by the byte-aligned padding-byte fix in
+    // D2Item.readExtend() (isSimpleBeltablePotion()'s comment). Each byte-aligned antidote potion's
+    // own end came out a byte short, so the first one desynced every item after it in the tab.
+    // With "apot" folded into that fix, all 47 items in the first tab decode. Panes 5 and 6 are the
+    // two DLC-converted tabs and stay incomplete-but-preserved exactly as in the second stash's
+    // test above -- so the two hidden tabs still cause no visible "[LOADED PARTIALLY]" warning.
+    @Test
+    public void fourthRealWorldStashWithByteAlignedAntidotePotionsLoadsFirstTabFully() throws Exception {
+        D2TxtFile.constructTxtFiles("./d2111");
+        String filename = new java.io.File(
+                Resources.getResource("sharedStash/AntidotePotionSharedStashSoftCoreV2.d2i").toURI())
+                .getAbsolutePath();
+
+        D2SharedStash stash = new D2SharedStashReader().readStash(filename);
+
+        assertEquals(7, stash.getPanes().size());
+
+        // The regression: the first tab used to stop at 14 items; it now loads all 47.
+        assertFalse(stash.getPane(0).isIncomplete(), "first tab should load completely");
+        assertEquals(47, stash.getPane(0).getItems().size());
+        assertEquals(1938499, stash.getPane(0).getGold());
+        assertTrue(stash.getPane(0).getItems().stream()
+                        .anyMatch(it -> "Antidote Potion".equals(it.getItemName())),
+                "first tab should contain the antidote potions that used to break it");
+
+        // Panes 1-4 are ordinary tabs and load fully too.
+        for (int i = 0; i <= 4; i++) {
+            assertFalse(stash.getPane(i).isIncomplete(), "pane " + i + " should have loaded completely");
+        }
+
+        // Panes 5 and 6 are the two DLC-converted tabs: still incomplete, still byte-preserved, and
+        // still hidden from the UI, so no visible tab reports a partial load.
+        assertTrue(stash.isItemsIncomplete());
+        assertEquals(5, stash.getVisibleTabCount());
+        assertFalse(stash.hasVisibleIncompletePane());
+        assertTrue(stash.getPane(5).isIncomplete());
+        assertNotNull(stash.getPane(5).getOriginalBytes());
+        assertTrue(stash.getPane(6).isIncomplete());
+        assertNotNull(stash.getPane(6).getOriginalBytes());
+    }
+
     private List<String> getItemDumps(D2SharedStash.D2SharedStashPane pane) {
         return pane.getItems().stream()
                 .map(it -> D2ItemRenderer.itemDump(it, true).replace("\r", ""))

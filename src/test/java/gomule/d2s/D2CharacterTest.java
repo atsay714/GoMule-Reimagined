@@ -341,6 +341,37 @@ public class D2CharacterTest {
         assertTrue(items.stream().noneMatch(i -> i.getItemName() != null && i.getItemName().contains("Ear")));
     }
 
+    // A Paladin the player reported couldn't be saved: "Item 93 of 98 failed to parse ... Error:
+    // null (null, null)". Same desync signature as the elix orbs above, but a different root
+    // cause: a "Light Healing Potion" ("hp2") whose 72-bit compact body ends exactly on a byte
+    // boundary. The generic end-of-item rounding (getNextByteBoundaryInBits) doesn't advance past
+    // an already-aligned position, so it dropped the potion's trailing padding byte and every item
+    // after it desynced. The fix (readExtend()'s "hpot"/"mpot" comment) adds +8 only for potions
+    // whose body is byte-aligned -- confirmed here by this same file carrying three "mp1"s (73-bit
+    // bodies) that parse fine with no adjustment, alongside the one hp2 that needed it. With the
+    // fix the whole character loads; without it, saving was blocked.
+    @Test
+    public void paladinWithByteAlignedHealingPotionParsesFully() throws Exception {
+        D2TxtFile.constructTxtFiles("./d2111");
+        D2Character d2Character = new D2Character(
+                new File(Resources.getResource("charFiles/pally.d2s").toURI()).getAbsolutePath());
+
+        assertEquals("pally", d2Character.getCharName());
+        assertEquals("Paladin", d2Character.getCharClass());
+        assertFalse(d2Character.isItemsIncomplete());
+
+        List<D2Item> items = d2Character.getItemList();
+        assertEquals(98, items.size());
+        assertEquals(0, d2Character.getMercItemNr());
+
+        // The byte-aligned Light Healing Potion whose dropped padding byte caused the desync, plus
+        // a Light/Minor Mana Potion (73-bit body) proving non-aligned potions still parse untouched.
+        assertTrue(items.stream().anyMatch(i -> "hp2".equals(i.getItem_type())), "hp2 (Light Healing Potion) missing");
+        assertTrue(items.stream().anyMatch(i -> "mp1".equals(i.getItem_type())), "mp1 (Minor Mana Potion) missing");
+        // The desync used to corrupt later items into "Ear"-shaped garbage; confirm none leaked.
+        assertTrue(items.stream().noneMatch(i -> i.getItemName() != null && i.getItemName().contains("Ear")));
+    }
+
     private static D2Item mercItemNamed(D2Character pCharacter, String pName) {
         for (int i = 0; i < pCharacter.getMercItemNr(); i++) {
             D2Item lItem = pCharacter.getMercItem(i);

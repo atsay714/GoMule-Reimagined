@@ -183,6 +183,16 @@ public class D2Item implements Comparable, D2ItemInterface {
         return iUnique && unique_id >= 392 && unique_id <= 399;
     }
 
+    // The simple single-cell beltable potions that share the byte-aligned padding-byte quirk fixed
+    // near the end of readExtend(): healing ("hpot"), mana ("mpot"), antidote ("apot"), thawing
+    // ("wpot") and stamina ("spot"). Deliberately excludes rejuvenation ("rpot": rvl/rvs), which
+    // carries a genuine extra field handled separately and unconditionally. See that call site's
+    // comment for the full reasoning and what is confirmed vs. included by structural analogy.
+    private static boolean isSimpleBeltablePotion(String pType) {
+        return "hpot".equals(pType) || "mpot".equals(pType) || "apot".equals(pType)
+                || "wpot".equals(pType) || "spot".equals(pType);
+    }
+
     public D2Item(String pFileName, D2BitReader pFile, long pCharLvl)
             throws Exception {
         iFileName = pFileName;
@@ -536,6 +546,30 @@ public class D2Item implements Comparable, D2ItemInterface {
         // Keyed on iType, not item_type, deliberately: the point is the category, not the code.
         // What these bits actually hold is still unknown.
         if ("elix".equals(iType) && usesPostV99ItemFormat()) {
+            pFile.skipBits(8);
+        }
+        // Simple beltable potions sit one padding byte short in the post-v99 format whenever their
+        // compact body happens to end exactly on a byte boundary. The generic end-of-item rounding
+        // (getNextByteBoundaryInBits, "(pos + 7) & ~7") only advances to the next byte when there
+        // are leftover bits; when the body is already a whole number of bytes it stays put, silently
+        // dropping that padding byte and desyncing every following item. Which potions this hits is
+        // decided purely by body length mod 8: a "Light Healing Potion" ("hp2"), a "Light Mana
+        // Potion" ("mp2") and an "Antidote Potion" ("yps") are 72 bits, exactly byte-aligned, so
+        // they need +8; hp1/hp3/hp4/hp5/mp1/mp3 carry 1-2 leftover bits and are already correct.
+        // Brute-force-confirmed twice, in two independent real files and across two type families:
+        // on a character, hp2 needed exactly +8 while three separate mp1s in the same file needed
+        // none; and in a real shared stash, three consecutive antidote potions ("apot") each landed
+        // byte-aligned here and each needed +8 (without it, the first one's own end came out a byte
+        // short and every item after it in the tab failed to load). Keyed on iType (the potion
+        // class), not item_type (the specific code), so it covers the whole family the same way.
+        // "wpot" (Thawing) and "spot" (Stamina) are the two remaining simple potion classes; no
+        // real sample of either has turned up yet, but they share the identical single-cell beltable
+        // structure, and because this rule fires only when already byte-aligned it is a no-op for
+        // them unless they hit the exact same padding-byte drop. Rejuvenation potions ("rpot":
+        // rvl/rvs) are the one potion family that is NOT folded in here: they carry a genuine extra
+        // field (handled above, unconditionally) regardless of alignment.
+        if (usesPostV99ItemFormat() && isSimpleBeltablePotion(iType)
+                && (pFile.get_pos() % 8) == 0) {
             pFile.skipBits(8);
         }
         // A rune or gem sitting loose at the top level (location != 6, i.e. not socketed into
