@@ -19,9 +19,13 @@ import static org.junit.jupiter.api.Assertions.*;
  *    The test value (50) is a representative value chosen to verify the rendering
  *    path works; it is NOT derived from any real item row. This is analogous to
  *    the affix-rand situation documented below.
- *  - war-tab-rand: properties.txt row 282, resolves item_addskill_tab with
- *    tab indices 21/22/23 (Warlock class tabs: Demon Skills, Eldritch Skills,
- *    Chaos Skills); also exercises known-good tabs to confirm the base path works
+ *  - war-tab-rand: properties.txt row 282, resolves item_addskill_tab to the mod's
+ *    Warlock class tabs (Demon Skills, Eldritch Skills, Chaos Skills). properties.txt
+ *    lists these as val 21/22/23, but that is the generation-time sequential tab
+ *    numbering; what an item actually STORES and what D2Prop renders is the global
+ *    "class * 8 + tab" index, so for the Warlock (class 7) those tabs are 56/57/58
+ *    (see getSkillTree()'s comment and the real-charm test in D2SharedStashReaderTest).
+ *    Also exercises a known-good vanilla tab to confirm the base path works.
  *  - affix-rand: properties.txt row 280, func1=25, stat1 empty — this property
  *    generates a random affix at item creation time and stores the resulting affix
  *    stats (not affix-rand itself) in the save; there is therefore no D2Prop stat
@@ -121,46 +125,51 @@ public class D2PropTest {
                 "item_addskill_tab (tree 34) did not render correctly");
     }
 
+    // The three Warlock tabs use the GLOBAL "class * 8 + tab" index that items actually store
+    // (class 7 -> 56/57/58), not the sequential 21/22/23 that properties.txt's war-tab-rand lists.
+    // A real Warlock grand charm stores tab 58 (Chaos Skills) -- see the end-to-end test in
+    // D2SharedStashReaderTest that reads it straight from a real shared stash.
     @Test
     void warTabRandDemonSkillsRendersNonEmpty() {
-        // war-tab-rand tab index 21 = Demon Skills (Warlock Only)
-        // charstats.txt Warlock row: StrSkillTab1=StrSklTabItem24 = "+%d to Demon Skills"
-        D2Prop prop = new D2Prop(188, new int[]{21, 1, 0}, QFLAG_STANDARD);
+        // Warlock tab 56 = Demon Skills (StrSkillTab1 = StrSklTabItem24 = "+%d to Demon Skills")
+        D2Prop prop = new D2Prop(188, new int[]{56, 1, 0}, QFLAG_STANDARD);
         String rendered = prop.generateDisplay(QFLAG_STANDARD, CLVL_DONT_CARE);
 
-        assertNotNull(rendered, "item_addskill_tab (tree 21) must not return null");
-        assertFalse(rendered.isEmpty(), "item_addskill_tab (tree 21) must not return empty");
+        assertNotNull(rendered, "item_addskill_tab (tree 56) must not return null");
+        assertFalse(rendered.isEmpty(), "item_addskill_tab (tree 56) must not return empty");
         assertFalse(rendered.contains("Unknown Tree"),
-                "item_addskill_tab (tree 21) must not fall through to Unknown Tree; got: " + rendered);
+                "item_addskill_tab (tree 56) must not fall through to Unknown Tree; got: " + rendered);
         assertTrue(rendered.contains("Demon Skills (Warlock Only)"),
-                "Expected 'Demon Skills (Warlock Only)' in rendered text for tree 21 but got: " + rendered);
+                "Expected 'Demon Skills (Warlock Only)' in rendered text for tree 56 but got: " + rendered);
     }
 
     @Test
     void warTabRandEldritchRendersNonEmpty() {
-        // war-tab-rand tab index 22 = Eldritch Skills (Warlock Only)
-        D2Prop prop = new D2Prop(188, new int[]{22, 1, 0}, QFLAG_STANDARD);
+        // Warlock tab 57 = Eldritch Skills (StrSkillTab2 = StrSklTabItem22 = "+%d to Eldritch Skills")
+        D2Prop prop = new D2Prop(188, new int[]{57, 1, 0}, QFLAG_STANDARD);
         String rendered = prop.generateDisplay(QFLAG_STANDARD, CLVL_DONT_CARE);
 
-        assertNotNull(rendered, "item_addskill_tab (tree 22) must not return null");
-        assertFalse(rendered.isEmpty(), "item_addskill_tab (tree 22) must not return empty");
+        assertNotNull(rendered, "item_addskill_tab (tree 57) must not return null");
+        assertFalse(rendered.isEmpty(), "item_addskill_tab (tree 57) must not return empty");
         assertFalse(rendered.contains("Unknown Tree"),
-                "item_addskill_tab (tree 22) must not fall through to Unknown Tree; got: " + rendered);
+                "item_addskill_tab (tree 57) must not fall through to Unknown Tree; got: " + rendered);
         assertTrue(rendered.contains("Eldritch Skills (Warlock Only)"),
-                "Expected 'Eldritch Skills (Warlock Only)' in rendered text for tree 22 but got: " + rendered);
+                "Expected 'Eldritch Skills (Warlock Only)' in rendered text for tree 57 but got: " + rendered);
     }
 
     @Test
     void warTabRandChaosRendersNonEmpty() {
-        // war-tab-rand tab index 23 = Chaos Skills (Warlock Only)
-        D2Prop prop = new D2Prop(188, new int[]{23, 1, 0}, QFLAG_STANDARD);
+        // Warlock tab 58 = Chaos Skills (StrSkillTab3 = StrSklTabItem23 = "+%d to Chaos Skills").
+        // This is the exact value a real Warlock grand charm stores (the one that used to render
+        // "+1 to Unknown Tree (P 188)").
+        D2Prop prop = new D2Prop(188, new int[]{58, 1, 0}, QFLAG_STANDARD);
         String rendered = prop.generateDisplay(QFLAG_STANDARD, CLVL_DONT_CARE);
 
-        assertNotNull(rendered, "item_addskill_tab (tree 23) must not return null");
-        assertFalse(rendered.isEmpty(), "item_addskill_tab (tree 23) must not return empty");
+        assertNotNull(rendered, "item_addskill_tab (tree 58) must not return null");
+        assertFalse(rendered.isEmpty(), "item_addskill_tab (tree 58) must not return empty");
         assertFalse(rendered.contains("Unknown Tree"),
-                "item_addskill_tab (tree 23) must not fall through to Unknown Tree; got: " + rendered);
+                "item_addskill_tab (tree 58) must not fall through to Unknown Tree; got: " + rendered);
         assertTrue(rendered.contains("Chaos Skills (Warlock Only)"),
-                "Expected 'Chaos Skills (Warlock Only)' in rendered text for tree 23 but got: " + rendered);
+                "Expected 'Chaos Skills (Warlock Only)' in rendered text for tree 58 but got: " + rendered);
     }
 }

@@ -263,6 +263,36 @@ public class D2SharedStashReaderTest {
         assertNotNull(stash.getPane(6).getOriginalBytes());
     }
 
+    // A fifth real shared stash: a later snapshot again, in which a Warlock (the Reimagined mod's
+    // added class) grand charm granting "+1 to Chaos Skills" sat alone in the third tab. The charm
+    // parsed fine but its skill-tab property rendered as "+1 to Unknown Tree (P 188)", because
+    // getSkillTree() had no case for the tab the charm actually stores. item_addskill_tab stores the
+    // GLOBAL "class * 8 + tab" index (Warlock is class 7, so its three tabs are 56/57/58), whereas
+    // getSkillTree() had only the mod's generation-time sequential numbers (21/22/23 from
+    // properties.txt's war-tab-rand), which no stored item ever carries. This reads the real charm
+    // straight from the file and confirms the fix end to end: it now renders "Chaos Skills (Warlock
+    // Only)", and nothing in the whole stash falls through to "Unknown Tree". (This is the check the
+    // earlier, synthetic-only 21/22/23 tests could not make -- they hard-coded the wrong value and
+    // "passed" against it; only a real charm's bytes could reveal the true stored index of 58.)
+    @Test
+    public void fifthRealWorldStashWithWarlockCharmRendersSkillTabName() throws Exception {
+        D2TxtFile.constructTxtFiles("./d2111");
+        String filename = new java.io.File(
+                Resources.getResource("sharedStash/WarlockCharmSharedStashSoftCoreV2.d2i").toURI())
+                .getAbsolutePath();
+
+        D2SharedStash stash = new D2SharedStashReader().readStash(filename);
+
+        List<String> allDumps = stash.getPanes().stream()
+                .flatMap(p -> getItemDumps(p).stream())
+                .collect(Collectors.toList());
+
+        assertTrue(allDumps.stream().anyMatch(d -> d.contains("Chaos Skills (Warlock Only)")),
+                "the real Warlock grand charm should render its skill tab name");
+        assertTrue(allDumps.stream().noneMatch(d -> d.contains("Unknown Tree")),
+                "no item should fall through to 'Unknown Tree (P 188)'");
+    }
+
     private List<String> getItemDumps(D2SharedStash.D2SharedStashPane pane) {
         return pane.getItems().stream()
                 .map(it -> D2ItemRenderer.itemDump(it, true).replace("\r", ""))

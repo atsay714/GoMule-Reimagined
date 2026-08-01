@@ -675,13 +675,26 @@ public class D2Prop {
             case 50:
                 return "Martial Art Skills (Assassin Only)";
 
-            case 21:
+            // The Reimagined mod's added class, the Warlock (charstats.txt row 8, so class index
+            // 7 -- confirmed by D2TxtFile.getCharacterCode(7) == "Warlock"). Skill tabs stored in
+            // item_addskill_tab (stat 188) are the GLOBAL "class * 8 + tab position" index, exactly
+            // like every vanilla case above (Assassin, class 6, is 48/49/50), so the Warlock's three
+            // tabs are 56/57/58 -- NOT the 21/22/23 that properties.txt's "war-tab-rand" lists. Those
+            // 21/22/23 are the mod's generation-time sequential tab numbers (vanilla fills used-tab
+            // slots 0-20, so the Warlock's are the next three), a different numbering that never
+            // reaches here: what an item actually stores, and what pVals[0] carries, is the global
+            // index. Confirmed by a real Warlock grand charm in a shared stash storing tab 58 and,
+            // before this fix, rendering as "+1 to Unknown Tree (P 188)". Names/order from the
+            // charstats.txt Warlock row: StrSkillTab1=StrSklTabItem24 "Demon Skills" (tab pos 0 ->
+            // 56), StrSkillTab2=StrSklTabItem22 "Eldritch Skills" (57), StrSkillTab3=StrSklTabItem23
+            // "Chaos Skills" (58).
+            case 56:
                 return "Demon Skills (Warlock Only)";
 
-            case 22:
+            case 57:
                 return "Eldritch Skills (Warlock Only)";
 
-            case 23:
+            case 58:
                 return "Chaos Skills (Warlock Only)";
 
         }
