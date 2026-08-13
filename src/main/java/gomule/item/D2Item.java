@@ -193,6 +193,12 @@ public class D2Item implements Comparable, D2ItemInterface {
                 || "wpot".equals(pType) || "spot".equals(pType);
     }
 
+    // The five Reimagined "Worldstone Shard" quest items (see the trailing-skip call site).
+    private boolean isWorldstoneShard() {
+        return "xa1".equals(item_type) || "xa2".equals(item_type) || "xa3".equals(item_type)
+                || "xa4".equals(item_type) || "xa5".equals(item_type);
+    }
+
     public D2Item(String pFileName, D2BitReader pFile, long pCharLvl)
             throws Exception {
         iFileName = pFileName;
@@ -428,22 +434,46 @@ public class D2Item implements Comparable, D2ItemInterface {
 
         if (iSocketNrFilled > 0) {
             iSocketedItems = new ArrayList<>();
+            // A flag-29 (skill-granting) item stores its extra skill bits -- the same bits the
+            // trailing skip near the end of this method reads for non-socketed items -- BEFORE its
+            // socketed sub-items, not after: sockets are always last in the item body, so anything
+            // the item itself carries past its property list comes first. For a non-socketed flag-29
+            // item the two placements coincide (no sockets, so "before the sockets" == "at the very
+            // end"), which is why the trailing skip near the end of this method has been correct until
+            // now. The first real socketed flag-29 item -- a Paladin's unique "Hand of Blessed Light"
+            // (uid 146) with "Heaven Facet" jewels socketed in -- exposed the difference: its facets
+            // only decoded, and the ~110 items after it only parsed, once these bits were skipped here
+            // instead of after the socket loop. The amount is exactly the same as that trailing skip
+            // (see hasElementalSkillProperty()); the trailing skip itself is suppressed for socketed
+            // items (its iSocketNrFilled == 0 guard) so the bits are never counted twice. Confirmed
+            // against three copies of that scepter in one character -- socketed with jewels, with
+            // empty sockets, and un-socketed -- whose trailing blobs are byte-for-byte the same
+            // structure regardless of sockets, all decoding only at this amount. Kept narrow
+            // (socketed + flag-29 + not a Facet, which has its own handling).
+            if (check_flag(29) && !isElementalFacet() && usesPostV99ItemFormat()) {
+                pFile.skipBits(hasElementalSkillProperty() ? 56 : 52);
+            }
             pFile.set_pos(pFile.getNextByteBoundaryInBits());
             for (int i = 0; i < iSocketNrFilled; i++) {
                 D2Item lSocket = new D2Item(iFileName, pFile, iCharLvl);
                 // Current D2R (version 105) inserts one full extra byte after each socketed
-                // sub-item (gem/rune/jewel actually filled into a socket) before the next one --
-                // or before whatever follows if it's the last. Confirmed against a real runeword
-                // (Pul+Hel+El = "Love"): without this skip, the first socketed rune decoded
-                // correctly but every rune after it read as garbage; with it, all three rune
-                // names and the ~20 items that follow in the same file decode correctly.
-                // Elemental Facets (isElementalFacet()) are the one exception: a socketed Facet's
-                // own 48-bit trailing skip (this file's other isElementalFacet() call site)
-                // already covers this byte -- confirmed against a real character (a "Sadira"
-                // unique bow with a Rime Facet in its first socket): adding this byte on top of
-                // the 48 broke the next socket (a Shael Rune), which only decoded correctly with
-                // no extra skip at all after the Facet.
-                if (usesPostV99ItemFormat() && !lSocket.isElementalFacet()) {
+                // rune/gem sub-item before the next one -- or before whatever follows if it's the
+                // last. Confirmed against a real runeword (Pul+Hel+El = "Love"): without this skip,
+                // the first socketed rune decoded correctly but every rune after it read as garbage;
+                // with it, all three rune names and the ~20 items that follow decode correctly.
+                // Socketed JEWELS are the exception -- they don't take this byte, because a jewel
+                // (unlike a simple rune/gem) carries its own property list and its read already ends
+                // flush against the next sub-item. This first showed up as elemental Facets only
+                // (isElementalFacet(): a "Sadira" unique bow with a Rime Facet in socket 0, where
+                // adding this byte on top of the Facet's own 48-bit trailing skip broke the next
+                // socket, a Shael Rune), but a later real character carried a non-Facet jewel socketed
+                // in -- a Paladin's "Hand of Blessed Light" holding two "Heaven Facet" jewels (a
+                // Reimagined jewel, uid 1400, outside the 392-399 elemental-Facet range) -- whose
+                // second jewel only decoded once the byte was withheld here too. Keying on the jewel
+                // type ("jew") rather than isElementalFacet() covers both: runes and gems still take
+                // the byte, every jewel skips it.
+                boolean socketIsJewel = "jew".equals(lSocket.item_type);
+                if (usesPostV99ItemFormat() && !lSocket.isElementalFacet() && !socketIsJewel) {
                     pFile.skipBits(8);
                 }
                 iSocketedItems.add(lSocket);
@@ -548,6 +578,21 @@ public class D2Item implements Comparable, D2ItemInterface {
         if ("elix".equals(iType) && usesPostV99ItemFormat()) {
             pFile.skipBits(8);
         }
+        // The Reimagined "Worldstone Shard" quest items (codes xa1-xa5: Western/Eastern/Southern/
+        // Deep/Northern) carry 8 extra trailing bits nothing above reads -- the same fixed-trailing-
+        // byte shape as "rvl"/"elix", NOT the byte-alignment one: the body ends mid-byte (bit offset
+        // 5), so this is unconditional, not gated on landing byte-aligned. Brute-force-confirmed
+        // against a real character carrying a "Deep Worldstone Shard" (xa4) in the cube -- without
+        // these 8 bits its own end came out a byte short and every item after it failed to load;
+        // with them the whole file (196 items) parses, the next item decoding into a real Small
+        // Charm. Only xa4 has actually been seen, but all five shards share one identical misc.txt
+        // row -- type "ques" with an EMPTY quest column, which is what sets them apart from the other
+        // "ques" items that parse fine untouched (the Horadric Cube and the Key to the Cairn Stones
+        // both carry a quest value, 10 and 5, and the latter has its own "bkd" handling above) -- so
+        // they are treated as one family. What these bits hold is still unknown.
+        if (isWorldstoneShard() && usesPostV99ItemFormat()) {
+            pFile.skipBits(8);
+        }
         // Simple beltable potions sit one padding byte short in the post-v99 format whenever their
         // compact body happens to end exactly on a byte boundary. The generic end-of-item rounding
         // (getNextByteBoundaryInBits, "(pos + 7) & ~7") only advances to the next byte when there
@@ -603,6 +648,23 @@ public class D2Item implements Comparable, D2ItemInterface {
                 pFile.skipBits(8);
             }
         }
+        // A rune or gem socketed INTO another item (location == 6) hits the same dropped-padding-byte
+        // quirk as the cube case above, but on its own account: when the socketed sub-item's body
+        // ends exactly on a byte boundary, the generic end-of-item byte-rounding (getNextByteBoundary,
+        // "(pos + 7) & ~7") has nothing to round and so silently drops the trailing padding byte,
+        // making the sub-item read one byte short. That desyncs the next socket, or -- for the last
+        // socket -- the item that follows the parent. Brute-force-confirmed against a real character:
+        // two socketed runeword flails, "Call to Arms" (Amn+Ral+Mal+Ist+Ohm) and "Heart of the Oak"
+        // (Ko+Vex+Pul+Thul), each failed to parse the item right after them until their final rune
+        // (Ohm, then Thul) -- the only one in each whose body happened to land byte-aligned -- got
+        // this byte back; every earlier rune in both, which ended mid-byte and so kept its padding
+        // through normal rounding, needed nothing, matching the alignment rule rather than the rune
+        // or its position. The loose (location != 6) case is handled separately above; keeping these
+        // apart avoids double-counting, since a loose rune already takes its own unconditional +8.
+        boolean isSocketedRuneOrGem = (iRune || (iType != null && iType.startsWith("gem"))) && location == 6;
+        if (isSocketedRuneOrGem && usesPostV99ItemFormat() && (pFile.get_pos() % 8) == 0) {
+            pFile.skipBits(8);
+        }
         // Elemental Facets (see isElementalFacet()) each carry exactly 48 extra trailing bits
         // that nothing above reads -- confirmed in the current (post-v99) format via three
         // independent real characters (Autumn, Rime and Thunder Facet, each appearing both
@@ -613,23 +675,19 @@ public class D2Item implements Comparable, D2ItemInterface {
             pFile.skipBits(48);
         }
         // Flag 29 (never previously checked anywhere in this codebase) is set on every item seen
-        // so far that grants a skill via a property that names or picks one (properties.txt func
-        // 21 or 22) -- confirmed across two real characters' full inventories and a real shared
-        // stash: every elemental Facet (isElementalFacet(), whose skill is fixed, not randomly
-        // rolled, func 11) has it set, and so does a real unique ring ("Sling") and a real unique
-        // pair of gauntlets ("Steelrend"). Facets already get their own, different (48-bit) skip
-        // above; the other two needed different amounts from each other too -- Sling (which has
-        // "magicskill", func 21: a class skill randomly picked from a whole tab at generation
-        // time) needed 56 extra trailing bits, but Steelrend (which only has "aura", func 22: a
-        // fixed, named skill) needed 52, not 56 -- both brute-force-confirmed as the only offset
-        // out of more than 80 tried that produced a real, recognizable next item (a "Gem Bag" for
-        // Sling; a real unique, "Hallowed Redeemer", for Steelrend) rather than "Ear"-shaped
-        // garbage. hasRandomlyPickedSkillProperty() (this file) tells the two cases apart by
-        // checking for a func-21 property specifically -- still only two confirmed real items, so
-        // this may not be the full picture for every flag-29 item. What these bits hold is still
-        // unknown.
-        if (check_flag(29) && !isElementalFacet() && usesPostV99ItemFormat()) {
-            pFile.skipBits(hasRandomlyPickedSkillProperty() ? 56 : 52);
+        // so far that grants a skill in some form -- confirmed across several real characters' full
+        // inventories and a real shared stash: every elemental Facet (isElementalFacet()) has it set,
+        // and so do a unique ring ("Sling"), unique gauntlets ("Steelrend") and a unique scepter
+        // ("Hand of Blessed Light"). Facets get their own, different (48-bit) skip above; the rest
+        // carry a trailing blob of 52 bits, or 56 when the item grants an elemental-skill bonus (see
+        // hasElementalSkillProperty() for the full evidence and why the amount is keyed on
+        // item_elemskill rather than the properties.txt func number). What the blob holds is still
+        // unknown; this is a length heuristic, not a decode.
+        // Only for items with NO socketed sub-items: when a flag-29 item is actually socketed, these
+        // same bits appear BEFORE its sockets instead and are skipped up in the socket loop (see the
+        // "Hand of Blessed Light" comment there), so counting them again here would double-skip.
+        if (iSocketNrFilled == 0 && check_flag(29) && !isElementalFacet() && usesPostV99ItemFormat()) {
+            pFile.skipBits(hasElementalSkillProperty() ? 56 : 52);
         }
     }
 
@@ -906,33 +964,44 @@ public class D2Item implements Comparable, D2ItemInterface {
         return statRow != null && !statRow.get("op").equals("");
     }
 
-    // Distinguishes the two confirmed flag-29 cases (see this file's other flag-29 comment):
-    // "magicskill" (properties.txt func 21 -- a class skill randomly picked from a whole tab at
-    // generation time) needs 4 more trailing bits than a plain named skill grant like "oskill" or
-    // "aura" (func 22), presumably to store which skill the random pick landed on. Checks every
-    // property slot this item's recipe (unique or set) could use; uniqueitems.txt goes up to
-    // prop12, setitems.txt up to prop9 plus the five threshold slots' "a"/"b" pairs.
-    private boolean hasRandomlyPickedSkillProperty() {
+    // The flag-29 trailing skill blob is 4 bits longer for an item that grants an "elemental skill"
+    // bonus -- properties.txt's fireskill/coldskill/lightningskill/poisonskill/magicskill, all of
+    // which resolve to the item_elemskill stat -- than for one that only grants named/fixed skills
+    // (oskill, aura, single skill, +class skills, skill tab). Both an elemental-skill property and a
+    // +class-skills property (item_addclassskills, e.g. "pal"/"dru") happen to share properties.txt
+    // func1 == 21 in this mod's data, so keying on func 21 (as this originally did) wrongly gave the
+    // extra 4 bits to +class-skills items too. Real examples pin the rule to item_elemskill, not
+    // func 21: a unique ring "Sling" (a magicskill/item_elemskill item) needs 56, while a unique
+    // scepter "Hand of Blessed Light" (+2 Paladin skills via item_addclassskills, plus single-skill,
+    // oskill and chance-to-cast grants, but no item_elemskill) needs 52 -- confirmed three ways from
+    // three copies of that scepter in one character (socketed with jewels, with empty sockets, and
+    // un-socketed), all of which decoded and let the rest of the file parse only at 52, not 56, and
+    // whose trailing blobs are byte-for-byte the same structure regardless of sockets. A unique pair
+    // of gauntlets "Steelrend" (item_aura, no item_elemskill) is the other confirmed 52. Checks every
+    // property slot this item's recipe (unique or set) could use; uniqueitems.txt goes up to prop12,
+    // setitems.txt up to prop9 plus the five threshold slots' "a"/"b" pairs. What the 4 bits hold is
+    // still unknown; this stays a length heuristic, not a decode of the blob.
+    private boolean hasElementalSkillProperty() {
         D2TxtFileItemProperties recipeRow = iUnique
                 ? D2TxtFile.UNIQUES.searchByID(unique_id)
                 : (iSet ? iSetItemRow : null);
         if (recipeRow == null) return false;
         for (int x = 1; x <= 12; x++) {
-            if (propertyUsesFunc21(recipeRow.get("prop" + x))) return true;
+            if (propertyGrantsElementalSkill(recipeRow.get("prop" + x))) return true;
         }
         if (iSet) {
             for (int x = 1; x <= 5; x++) {
-                if (propertyUsesFunc21(recipeRow.get("aprop" + x + "a"))) return true;
-                if (propertyUsesFunc21(recipeRow.get("aprop" + x + "b"))) return true;
+                if (propertyGrantsElementalSkill(recipeRow.get("aprop" + x + "a"))) return true;
+                if (propertyGrantsElementalSkill(recipeRow.get("aprop" + x + "b"))) return true;
             }
         }
         return false;
     }
 
-    private boolean propertyUsesFunc21(String pPropertyCode) {
+    private boolean propertyGrantsElementalSkill(String pPropertyCode) {
         if (pPropertyCode.equals("")) return false;
         D2TxtFileItemProperties propRow = D2TxtFile.PROPS.searchColumns("code", pPropertyCode);
-        return propRow != null && "21".equals(propRow.get("func1"));
+        return propRow != null && "item_elemskill".equals(propRow.get("stat1"));
     }
 
     private void addSetProperties(D2TxtFileItemProperties fullsetRow) {

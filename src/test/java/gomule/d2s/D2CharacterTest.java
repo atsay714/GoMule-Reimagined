@@ -11,6 +11,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -405,6 +406,124 @@ public class D2CharacterTest {
                         && i.getItemName().contains("Latent Black Cleft")),
                 "the charm inside the cube should have parsed");
         // Confirm the desync didn't leak "Ear"-shaped garbage into any later item.
+        assertTrue(items.stream().noneMatch(i -> i.getItemName() != null && i.getItemName().contains("Ear")));
+    }
+
+    // A much larger snapshot of the same paladin (a full stash of modded gear) that found three
+    // more real, independent parsing bugs, each confirmed by decoding the actual items involved and
+    // by the ~110 items after each one only parsing once it was fixed:
+    //   1. A socketed flag-29 (skill-granting) item stores its extra skill bits BEFORE its socketed
+    //      sub-items, not after -- the unique scepter "Hand of Blessed Light" with two "Heaven Facet"
+    //      jewels in it. See D2Item's socket loop. (The blob's length also drove the discriminator
+    //      fix in hasElementalSkillProperty(); the dedicated three-copy fixture below pins that down.)
+    //   2. A socketed JEWEL (not just an elemental Facet) does not take the one-byte inter-socket
+    //      skip that runes/gems do -- both of that scepter's Heaven Facets (a Reimagined jewel
+    //      outside the 392-399 elemental-Facet range). Same socket loop.
+    //   3. A rune socketed into an item whose body lands byte-aligned loses its trailing padding
+    //      byte to the same end-of-item rounding quirk the potions/cube-runes have -- the final
+    //      runes of the runeword flails "Call to Arms" (Ohm) and "Heart of the Oak" (Thul), the only
+    //      ones in each whose body happened to land byte-aligned. See D2Item.readExtend()'s
+    //      location == 6 branch.
+    @Test
+    public void paladinWithSocketedSkillUniqueAndFacetsParsesFully() throws Exception {
+        D2TxtFile.constructTxtFiles("./d2111");
+        D2Character d2Character = new D2Character(
+                new File(Resources.getResource("charFiles/pally3.d2s").toURI()).getAbsolutePath());
+
+        assertEquals("pally", d2Character.getCharName());
+        assertEquals("Paladin", d2Character.getCharClass());
+        assertFalse(d2Character.isItemsIncomplete(), d2Character.getItemsIncompleteReason());
+
+        List<D2Item> items = d2Character.getItemList();
+        assertEquals(PALLY3_ITEM_COUNT, items.size());
+
+        // (1)+(2): the socketed flag-29 unique scepter with its two non-elemental "Heaven Facet"
+        // jewels -- both facets must have decoded (they only do once the skill bits move before the
+        // sockets AND the inter-socket byte is withheld for jewels).
+        D2Item hbl = items.stream().filter(i -> "Hand of Blessed Light".equals(i.getItemName()))
+                .findFirst().orElseThrow(() -> new AssertionError("Hand of Blessed Light not found"));
+        assertEquals(2, hbl.getSocketNrFilled());
+        assertNotNull(hbl.getiSocketedItems());
+        assertEquals(2, hbl.getiSocketedItems().size());
+        assertTrue(hbl.getiSocketedItems().stream()
+                        .allMatch(s -> s.getItemName() != null && s.getItemName().contains("Heaven Facet")),
+                "both sockets of Hand of Blessed Light should be Heaven Facets");
+
+        // (3): both runeword flails whose final rune landed byte-aligned parsed, and the items after
+        // them did too (they are what exposed the socketed-rune padding-byte drop).
+        assertTrue(items.stream().anyMatch(i -> "Call to Arms".equals(i.getItemName())), "Call to Arms missing");
+        assertTrue(items.stream().anyMatch(i -> "Heart of the Oak".equals(i.getItemName())), "Heart of the Oak missing");
+
+        // The desync used to corrupt following items into "Ear"-shaped garbage; confirm none leaked.
+        assertTrue(items.stream().noneMatch(i -> i.getItemName() != null && i.getItemName().contains("Ear")));
+    }
+
+    private static final int PALLY3_ITEM_COUNT = 171;
+
+    // A deliberately-minimal character built to isolate the flag-29 trailing skill blob: it carries
+    // the SAME unique scepter, "Hand of Blessed Light", three times -- once with jewels socketed in,
+    // once with empty sockets, and once un-socketed -- plus a few plain white bases. All three copies
+    // decode, and every item after them parses, only when that blob is 52 bits, not the 56 the old
+    // func-21 heuristic gave it (its "+2 Paladin skills" is item_addclassskills, func 21, but NOT the
+    // item_elemskill an elemental-skill bonus like Sling's would be -- see hasElementalSkillProperty).
+    // The three copies decoding identically -- socketed and not -- is also what proved the blob is
+    // the same structure whether it sits before the sockets or at the tail.
+    @Test
+    public void threeHandOfBlessedLightSocketVariantsAllParse() throws Exception {
+        D2TxtFile.constructTxtFiles("./d2111");
+        D2Character d2Character = new D2Character(
+                new File(Resources.getResource("charFiles/hblSocketVariants.d2s").toURI()).getAbsolutePath());
+
+        assertFalse(d2Character.isItemsIncomplete(), d2Character.getItemsIncompleteReason());
+
+        List<D2Item> items = d2Character.getItemList();
+        List<D2Item> hbls = items.stream()
+                .filter(i -> "Hand of Blessed Light".equals(i.getItemName()))
+                .collect(java.util.stream.Collectors.toList());
+        assertEquals(3, hbls.size(), "all three Hand of Blessed Light copies should parse");
+
+        // The three socket configurations: empty sockets (0 of 5), un-socketed (0 of 0), and filled
+        // with 4 Heaven Facet jewels (4 of 5).
+        assertTrue(hbls.stream().anyMatch(i -> i.getSocketNrFilled() == 0 && i.getSocketNrTotal() == 5),
+                "the empty-socketed copy (0 of 5) should parse");
+        assertTrue(hbls.stream().anyMatch(i -> i.getSocketNrFilled() == 0 && i.getSocketNrTotal() == 0),
+                "the un-socketed copy (0 of 0) should parse");
+        D2Item filled = hbls.stream().filter(i -> i.getSocketNrFilled() == 4).findFirst()
+                .orElseThrow(() -> new AssertionError("the 4-jewel copy should parse"));
+        assertEquals(4, filled.getiSocketedItems().size());
+        assertTrue(filled.getiSocketedItems().stream()
+                        .allMatch(s -> s.getItemName() != null && s.getItemName().contains("Heaven Facet")),
+                "all four sockets should be Heaven Facets");
+        assertTrue(items.stream().noneMatch(i -> i.getItemName() != null && i.getItemName().contains("Ear")));
+    }
+
+    // The fullest snapshot of the paladin's stash (187 character items + a geared mercenary). It
+    // added one more real quirk on top of everything the pally3 fixture already covers: a Reimagined
+    // "Worldstone Shard" quest item ("Deep Worldstone Shard", code xa4) carries 8 trailing bits
+    // nothing above read, so it came out a byte short and every item after it failed to load. See
+    // D2Item.isWorldstoneShard(). This file also exercises the elemental-skill discriminator fix at
+    // scale: a set item ("Immortal King's Stone Crusher", +class-skills via item_addclassskills) sits
+    // right before a second set item ("Animal Kinship"), and both -- plus the ~35 items after them --
+    // only parse once that +class-skills grant stops being over-counted as an elemental-skill one.
+    @Test
+    public void fullPaladinStashWithWorldstoneShardAndSetItemsParsesCompletely() throws Exception {
+        D2TxtFile.constructTxtFiles("./d2111");
+        D2Character d2Character = new D2Character(
+                new File(Resources.getResource("charFiles/pally4.d2s").toURI()).getAbsolutePath());
+
+        assertEquals("pally", d2Character.getCharName());
+        assertFalse(d2Character.isItemsIncomplete(), d2Character.getItemsIncompleteReason());
+
+        List<D2Item> items = d2Character.getItemList();
+        assertEquals(196, items.size());
+        // The quest item whose missing trailing byte was the last thing blocking a full load.
+        assertTrue(items.stream().anyMatch(i -> "xa4".equals(i.getItem_type())
+                        && "Deep Worldstone Shard".equals(i.getItemName())),
+                "Deep Worldstone Shard (xa4) should have parsed");
+        // The two adjacent set items that the elemental-skill discriminator fix keeps aligned.
+        assertTrue(items.stream().anyMatch(i -> "Animal Kinship".equals(i.getItemName())), "Animal Kinship missing");
+        assertTrue(items.stream().anyMatch(i -> "Immortal King's Stone Crusher".equals(i.getItemName())),
+                "Immortal King's Stone Crusher missing");
         assertTrue(items.stream().noneMatch(i -> i.getItemName() != null && i.getItemName().contains("Ear")));
     }
 
