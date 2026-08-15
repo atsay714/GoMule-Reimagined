@@ -117,7 +117,12 @@ public class D2BitReader {
          * offset += i+1; data = data.substring(i+1); }while(true);
          */
         Vector v = new Vector();
-        for (int i = 0; i < filedata.length; i++) {
+        // Stop at filedata.length - target.length: a match target.length bytes long can only start
+        // at a position that leaves room for all of it. Scanning further and reading filedata[i + j]
+        // would run off the end -- a real shared stash (ModernSharedStashSoftCoreV2.d2i) whose final
+        // byte happened to equal target[0] (0x55, the first byte of the "55AA55AA" pane marker) threw
+        // ArrayIndexOutOfBoundsException here before this bound was added.
+        for (int i = 0; i + target.length <= filedata.length; i++) {
             if (filedata[i] == target[0]) {
                 boolean found = true;
                 for (int j = 0; j < target.length; j++) {
@@ -142,7 +147,9 @@ public class D2BitReader {
     }
 
     public int findNextBytes(byte[] target, int pPos) {
-        for (int i = pPos; i < filedata.length; i++) {
+        // Same end-of-buffer guard as findBytes(): only scan positions that can hold the whole
+        // target, so the inner filedata[i + j] read can never run off the end.
+        for (int i = pPos; i + target.length <= filedata.length; i++) {
             if (filedata[i] == target[0]) {
                 boolean found = true;
                 for (int j = 0; j < target.length; j++) {
