@@ -354,7 +354,18 @@ public class D2Item implements Comparable, D2ItemInterface {
             }
         }
 
-        String lItemName = D2Files.getInstance().getTranslations().getTranslation(item_type, iItemType.get("name"));
+        String lItemName = D2Files.getInstance().getTranslations()
+                .getTranslationOrNull(item_type, iItemType.get("name"));
+        if (lItemName == null) {
+            // No localized string for this item -- typically a newly-added Reimagined item that
+            // isn't in the translation tables yet (e.g. the "cs2" Crafted Sunder Charm). Fall back
+            // to the raw display name straight from the .txt files instead of crashing the whole
+            // character load: getTranslation() would throw IllegalArgumentException here, but the
+            // null check just below shows a missing translation was always meant to be tolerated.
+            // Note the second argument above is a translation KEY (tried after item_type); the
+            // fallback here uses the same "name" column directly as the display string.
+            lItemName = iItemType.get("name");
+        }
         if (lItemName != null) {
             iItemName = lItemName;
             iBaseItemName = iItemName;
@@ -469,10 +480,15 @@ public class D2Item implements Comparable, D2ItemInterface {
                 // socket, a Shael Rune), but a later real character carried a non-Facet jewel socketed
                 // in -- a Paladin's "Hand of Blessed Light" holding two "Heaven Facet" jewels (a
                 // Reimagined jewel, uid 1400, outside the 392-399 elemental-Facet range) -- whose
-                // second jewel only decoded once the byte was withheld here too. Keying on the jewel
-                // type ("jew") rather than isElementalFacet() covers both: runes and gems still take
-                // the byte, every jewel skips it.
-                boolean socketIsJewel = "jew".equals(lSocket.item_type);
+                // second jewel only decoded once the byte was withheld here too. Keyed on the jewel
+                // FAMILY, not a single item code: a regular Jewel is code "jew", but the Reimagined
+                // "Colossal Jewel" is code "cjw" (e.g. a unique "Guardian's Light" socketed alongside
+                // four Heaven Facets in one Hand of Blessed Light) -- both, and any future jewel code,
+                // share namestr "jew", which is the real "is this a jewel" flag. Without this the cjw
+                // took the byte and the item after its scepter failed to load. Runes and gems (other
+                // namestrs) still take the byte.
+                boolean socketIsJewel = lSocket.iItemType != null
+                        && "jew".equals(lSocket.iItemType.get("namestr"));
                 if (usesPostV99ItemFormat() && !lSocket.isElementalFacet() && !socketIsJewel) {
                     pFile.skipBits(8);
                 }

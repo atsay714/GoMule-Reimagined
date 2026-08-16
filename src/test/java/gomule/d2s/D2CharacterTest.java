@@ -527,6 +527,42 @@ public class D2CharacterTest {
         assertTrue(items.stream().noneMatch(i -> i.getItemName() != null && i.getItemName().contains("Ear")));
     }
 
+    // A later paladin snapshot that added two more independent quirks:
+    //   1. A newly-added Reimagined item with no localized string, the "cs2" Crafted Sunder Charm
+    //      (here rolled into a unique, "Renewed Black Cleft"). Its base-name lookup used to throw
+    //      "No translation for cs2" and abort the whole load; now a missing translation falls back to
+    //      the raw .txt display name. See D2Item.readExtend()'s getTranslationOrNull fallback.
+    //   2. A "Colossal Jewel" (item code "cjw", e.g. the unique "Guardian's Light") socketed as the
+    //      last of five sockets in a "Hand of Blessed Light". A Colossal Jewel is a different item
+    //      code from a plain Jewel ("jew") but shares namestr "jew", so keying the socketed-jewel
+    //      "no inter-socket byte" rule on namestr rather than the exact code keeps it from over-
+    //      reading and dropping the item after the scepter. See D2Item's socket loop.
+    @Test
+    public void paladinWithColossalJewelAndUntranslatedCharmParsesFully() throws Exception {
+        D2TxtFile.constructTxtFiles("./d2111");
+        D2Character d2Character = new D2Character(
+                new File(Resources.getResource("charFiles/pally5.d2s").toURI()).getAbsolutePath());
+
+        assertEquals("pally", d2Character.getCharName());
+        assertFalse(d2Character.isItemsIncomplete(), d2Character.getItemsIncompleteReason());
+
+        List<D2Item> items = d2Character.getItemList();
+        assertEquals(122, items.size());
+
+        // (1) the untranslated cs2 charm parsed (and still resolved its unique name).
+        assertTrue(items.stream().anyMatch(i -> "cs2".equals(i.getItem_type())),
+                "the untranslated cs2 charm should have parsed");
+        // (2) the Hand of Blessed Light holding four Heaven Facets plus one Colossal Jewel (cjw).
+        D2Item hbl = items.stream().filter(i -> "Hand of Blessed Light".equals(i.getItemName())
+                        && i.getSocketNrFilled() == 5).findFirst()
+                .orElseThrow(() -> new AssertionError("5-socket Hand of Blessed Light not found"));
+        assertTrue(hbl.getiSocketedItems().stream().anyMatch(s -> "cjw".equals(s.getItem_type())),
+                "the Colossal Jewel (cjw) socket should have decoded");
+        assertEquals(4, hbl.getiSocketedItems().stream()
+                .filter(s -> "jew".equals(s.getItem_type())).count(), "four Heaven Facets expected");
+        assertTrue(items.stream().noneMatch(i -> i.getItemName() != null && i.getItemName().contains("Ear")));
+    }
+
     private static D2Item mercItemNamed(D2Character pCharacter, String pName) {
         for (int i = 0; i < pCharacter.getMercItemNr(); i++) {
             D2Item lItem = pCharacter.getMercItem(i);
