@@ -195,6 +195,18 @@ public class D2SharedStash extends D2ItemListAdapter {
             return new D2SharedStashPane(items, constructPaneGrid(items), gold, incompleteReason, originalBytes);
         }
 
+        // A "Modern"/DLC auto-arranging STACKABLE tab: every item parsed and the pane's byte length
+        // matched its header, so the read is correct, but the items share grid cells (they stack
+        // rather than tile one-per-cell) and constructPaneGrid rejects that. Keep the items -- they
+        // are real and fully decoded, so they belong in the flat item list and search -- but build a
+        // best-effort grid that just keeps the first item in each shared cell, and set both an
+        // incompleteReason (so the pane is hidden from the visible tab strip and written back verbatim
+        // from originalBytes, never reconstructed into a layout GoMule doesn't model) and
+        // originalBytes. See D2SharedStashReader.readSharedStashPane()'s call site for the full story.
+        public static D2SharedStashPane fromItemsStacked(List<D2Item> items, int gold, String incompleteReason, byte[] originalBytes) {
+            return new D2SharedStashPane(items, constructPaneGridLenient(items), gold, incompleteReason, originalBytes);
+        }
+
         public boolean isIncomplete() {
             return incompleteReason != null;
         }
@@ -216,6 +228,23 @@ public class D2SharedStash extends D2ItemListAdapter {
                     for (int j = item.get_row(); j < (int) item.get_row() + (int) item.get_height(); j++) {
                         if (grid[i][j] != null) throw new RuntimeException("Failed to create shared stash pane");
                         grid[i][j] = item;
+                    }
+                }
+            }
+            return grid;
+        }
+
+        // Overlap- and bounds-tolerant grid for stackable tabs (see fromItemsStacked()): where the
+        // strict builder throws on the first shared cell, this keeps the first item placed there and
+        // skips the rest, and ignores any cell outside the 16x13 pane. Only for panes already known to
+        // be stackable/verbatim -- never used to decide whether a normal pane is well-formed.
+        private static D2Item[][] constructPaneGridLenient(List<D2Item> items) {
+            D2Item[][] grid = new D2Item[16][13];
+            for (D2Item item : items) {
+                for (int i = item.get_col(); i < (int) item.get_col() + (int) item.get_width(); i++) {
+                    for (int j = item.get_row(); j < (int) item.get_row() + (int) item.get_height(); j++) {
+                        if (i < 0 || i >= grid.length || j < 0 || j >= grid[i].length) continue;
+                        if (grid[i][j] == null) grid[i][j] = item;
                     }
                 }
             }

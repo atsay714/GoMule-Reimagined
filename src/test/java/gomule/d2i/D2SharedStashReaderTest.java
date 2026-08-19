@@ -86,16 +86,21 @@ public class D2SharedStashReaderTest {
     // masked by D2Item's byte-rounding, and a real unique armor here ("Adamantine Mail") exposed
     // it by landing on a byte boundary that didn't absorb the error. The real rule is simpler:
     // always exactly 1 trailing bit, never 2, regardless of either flag.
-    // Pane 5 (one of the two converted tabs) decodes 12 ordinary loose items -- potions, a
-    // Reimagined-specific consumable, and several runes, none of which are stored as regular
-    // items at all and needed their own fixes (D2Item.isLooseRuneOrGem's comment et al.) -- before
-    // hitting content that isn't stored as ordinary items at all: what look like loose gems turn
-    // out to be false-positive decodes once checked by decoding several items in a row instead of
-    // just the next one (most likely the same kind of simplified, non-item storage the Gem Bag
-    // uses, but not yet confirmed). Pane 6 is the second converted tab and fails on its very first
-    // item. D2SharedStashReader's partial-load fallback (mirroring D2Character's) keeps both as
-    // empty, clearly-marked-incomplete panes instead of losing every pane, including the five
-    // perfectly good ones.
+    // Pane 5 is a "Modern"/DLC auto-arranging STACKABLE rune/gem/orb tab. Its 63 entries -- runes,
+    // gems, elixir-family Orbs, Worldstone Shards, Pandemonium keys, Rune Pliers and an Uber Ancient
+    // material -- ARE all regular items and now decode in full, with the pane's byte length matching
+    // its header exactly. An earlier read gave up at the first byte-aligned gem and mistook the rest
+    // for "non-item storage"; the isLooseRuneOrGem (byte-aligned loose gem), isReimaginedQuestItem
+    // (ques-with-blank-quest-column shards/keys/materials) and "grab"-type (Rune Pliers) fixes
+    // disproved that -- every one is a real, fully decoded item. What the tab genuinely does NOT match
+    // is GoMule's one-item-per-cell grid: its items stack on shared slots, so the pane is kept (its
+    // items appear in the flat item list and search) but marked incomplete -- hidden from the tab
+    // strip and written back verbatim rather than reconstructed into a layout GoMule doesn't model
+    // (see D2SharedStashPane.fromItemsStacked). Pane 6 is a declared-but-empty trailing pane with no
+    // "JM" item marker at all (~5.5KB of zero padding); it is likewise kept as an empty,
+    // verbatim-preserved pane instead of being parsed as thousands of phantom items. The partial-load
+    // fallback keeps both clearly-marked-incomplete instead of losing every pane, the five good ones
+    // included.
     //
     // Originally, isItemsIncomplete() also blocked saving outright -- but a real player ran into
     // exactly that: wanting to move an item between the 5 working tabs, but unable to save *any*
@@ -134,11 +139,23 @@ public class D2SharedStashReaderTest {
             assertFalse(stash.getPane(i).isIncomplete(), "pane " + i + " should have loaded completely");
         }
 
+        // Pane 5 is the stackable rune/gem/orb tab: still incomplete (hidden + saved verbatim), but
+        // its 63 real items are now recovered instead of dropped, so they show up in searches.
         assertTrue(stash.getPane(5).isIncomplete());
-        assertEquals(0, stash.getPane(5).getItems().size());
+        assertEquals(63, stash.getPane(5).getItems().size());
+        assertTrue(stash.getPane(5).getIncompleteReason().contains("Stackable"));
         assertNotNull(stash.getPane(5).getOriginalBytes());
+        // Concrete spot-checks across the item families that each needed a parser fix, proving the
+        // whole tab decoded and not just that the count happens to line up.
+        assertTrue(pane5Has(stash, "Tal Rune"), "loose rune");          // isLooseRuneOrGem
+        assertTrue(pane5Has(stash, "Emerald"), "byte-aligned loose gem"); // isLooseRuneOrGem alignment
+        assertTrue(pane5Has(stash, "Worldstone Shard"), "ques family");   // isReimaginedQuestItem
+        assertTrue(pane5Has(stash, "Key of Destruction"), "Pandemonium key"); // isReimaginedQuestItem
+        assertTrue(pane5Has(stash, "Rune Pliers"), "grab-type tool");     // "grab" iType
+        // Pane 6 is the empty trailing/padding pane: no JM marker, no items, preserved verbatim.
         assertTrue(stash.getPane(6).isIncomplete());
         assertEquals(0, stash.getPane(6).getItems().size());
+        assertTrue(stash.getPane(6).getIncompleteReason().contains("No item-list"));
         assertNotNull(stash.getPane(6).getOriginalBytes());
 
         // Find pane 5 and 6's exact byte ranges in the original file directly (independently of
@@ -166,10 +183,66 @@ public class D2SharedStashReaderTest {
         assertEquals(46, reread.getPane(2).getItems().size());
         assertEquals(44, reread.getPane(3).getItems().size());
         assertEquals(32, reread.getPane(4).getItems().size());
-        assertEquals(0, reread.getPane(5).getItems().size());
+        // Saved verbatim, so the stackable tab re-reads to the same 63 recovered items.
+        assertEquals(63, reread.getPane(5).getItems().size());
         assertTrue(reread.getPane(5).isIncomplete());
         assertEquals(0, reread.getPane(6).getItems().size());
         assertTrue(reread.getPane(6).isIncomplete());
+    }
+
+    // True if pane 5 holds an item whose (color-code-prefixed) display name contains the substring.
+    private static boolean pane5Has(D2SharedStash stash, String namePart) {
+        return stash.getPane(5).getItems().stream()
+                .anyMatch(it -> it.getItemName() != null && it.getItemName().contains(namePart));
+    }
+
+    // A later save of the same "Modern" DLC stash, kept as its own fixture because it carries the
+    // item this test exists for: an elemental Facet ("Spring Facet", uid 392) with flag 29 CLEAR. The
+    // 48-bit elemental-Facet trailing blob turned out to be the flag-29 skill blob (facets grant a
+    // level-up/death skill), present only when the item actually sets flag 29 -- but every Facet
+    // sampled before this file happened to have it set, so isElementalFacet's skip was applied
+    // unconditionally. This file has two Spring Facets side by side in a real stash tab (pane 2), one
+    // with flag 29 set and one clear; the flag-clear one over-read by exactly those 6 bytes and
+    // desynced the ~30 items after it -- the D2Item.readExtend NPE the user reported. Gating the skip
+    // on check_flag(29) (like the non-Facet blob already was) fixes it. Pane 2 is a normal, VISIBLE
+    // tab here, so this is asserted through the ordinary loaded item list, not a hidden/verbatim pane.
+    @Test
+    public void modernStashWithFlag29ClearSpringFacetLoadsTheVisibleTabAndSavesUnchanged() throws Exception {
+        D2TxtFile.constructTxtFiles("./d2111");
+        byte[] originalBytes = Resources.toByteArray(Resources.getResource("sharedStash/SpringFacetSharedStashSoftCoreV2.d2i"));
+        java.io.File tempFile = java.io.File.createTempFile("SpringFacetSharedStashSoftCoreV2", ".d2i");
+        tempFile.deleteOnExit();
+        java.nio.file.Files.write(tempFile.toPath(), originalBytes);
+
+        D2SharedStash stash = new D2SharedStashReader().readStash(tempFile.getAbsolutePath());
+
+        // Five real tabs load; the stackable rune/gem tab (pane 5) and empty padding pane (pane 6)
+        // are hidden, so the user sees no false "[LOADED PARTIALLY]" warning.
+        assertEquals(7, stash.getPanes().size());
+        assertEquals(5, stash.getVisibleTabCount());
+        assertFalse(stash.hasVisibleIncompletePane());
+
+        // Pane 2 is a normal visible tab that previously crashed the whole load. It now decodes fully,
+        // including BOTH Spring Facets -- the one with flag 29 clear (the culprit) and the one set.
+        assertFalse(stash.getPane(2).isIncomplete(), "the Spring Facet tab must load completely");
+        assertEquals(75, stash.getPane(2).getItems().size());
+        long springFacets = stash.getPane(2).getItems().stream()
+                .filter(it -> it.getItemName() != null && it.getItemName().contains("Spring Facet"))
+                .count();
+        assertEquals(2, springFacets, "both Spring Facets (flag-29 set and clear) decode");
+
+        // The stackable rune/gem tab is recovered here too (78 items), and the flag-29 fix is what let
+        // its own facets decode; spot-check the same fix-per-family items as the fixture above.
+        assertTrue(stash.getPane(5).isIncomplete());
+        assertEquals(78, stash.getPane(5).getItems().size());
+        assertTrue(pane5Has(stash, "Rune Pliers"));
+        assertTrue(pane5Has(stash, "Key of Destruction"));
+
+        // Save must not throw and must leave the file byte-for-byte unchanged (5 tabs reconstructed
+        // losslessly, the 2 incomplete tabs written verbatim).
+        stash.saveInternal(null);
+        byte[] savedBytes = java.nio.file.Files.readAllBytes(tempFile.toPath());
+        assertArrayEquals(originalBytes, savedBytes);
     }
 
     // A third real shared stash, from a non-DLC character -- confirming that none of the fixes

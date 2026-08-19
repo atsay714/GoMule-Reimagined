@@ -193,10 +193,14 @@ public class D2Item implements Comparable, D2ItemInterface {
                 || "wpot".equals(pType) || "spot".equals(pType);
     }
 
-    // The five Reimagined "Worldstone Shard" quest items (see the trailing-skip call site).
-    private boolean isWorldstoneShard() {
-        return "xa1".equals(item_type) || "xa2".equals(item_type) || "xa3".equals(item_type)
-                || "xa4".equals(item_type) || "xa5".equals(item_type);
+    // The Reimagined/D2R quest-item family that carries one fixed extra trailing byte (see the
+    // trailing-skip call site for the full evidence): every "type == ques" item whose misc.txt "quest"
+    // column is blank. That blank column is what separates the mod's added quest items (Worldstone
+    // Shards, Pandemonium keys, Uber organs/essences/materials, Standard of Heroes) from the classic
+    // ones (Horadric Cube, Khalim's organs, etc.), which all carry a non-empty quest value and parse
+    // fine untouched. iType is iItemType.get("type"), already set by the time this is called.
+    private boolean isReimaginedQuestItem() {
+        return "ques".equals(iType) && iItemType != null && "".equals(iItemType.get("quest"));
     }
 
     public D2Item(String pFileName, D2BitReader pFile, long pCharLvl)
@@ -594,19 +598,38 @@ public class D2Item implements Comparable, D2ItemInterface {
         if ("elix".equals(iType) && usesPostV99ItemFormat()) {
             pFile.skipBits(8);
         }
-        // The Reimagined "Worldstone Shard" quest items (codes xa1-xa5: Western/Eastern/Southern/
-        // Deep/Northern) carry 8 extra trailing bits nothing above reads -- the same fixed-trailing-
-        // byte shape as "rvl"/"elix", NOT the byte-alignment one: the body ends mid-byte (bit offset
-        // 5), so this is unconditional, not gated on landing byte-aligned. Brute-force-confirmed
-        // against a real character carrying a "Deep Worldstone Shard" (xa4) in the cube -- without
-        // these 8 bits its own end came out a byte short and every item after it failed to load;
-        // with them the whole file (196 items) parses, the next item decoding into a real Small
-        // Charm. Only xa4 has actually been seen, but all five shards share one identical misc.txt
-        // row -- type "ques" with an EMPTY quest column, which is what sets them apart from the other
-        // "ques" items that parse fine untouched (the Horadric Cube and the Key to the Cairn Stones
-        // both carry a quest value, 10 and 5, and the latter has its own "bkd" handling above) -- so
-        // they are treated as one family. What these bits hold is still unknown.
-        if (isWorldstoneShard() && usesPostV99ItemFormat()) {
+        // The Reimagined/D2R quest items carry 8 extra trailing bits nothing above reads -- the same
+        // fixed-trailing-byte shape as "rvl"/"elix", NOT the byte-alignment one: their bodies end
+        // mid-byte (observed bit offsets 3-5), so this is unconditional, not gated on landing
+        // byte-aligned. The discriminator is the whole "type == ques with an EMPTY quest column"
+        // family (see isReimaginedQuestItem()), not a code list: it started as an xa1-xa5 "Worldstone
+        // Shard" fix (brute-force-confirmed against a real "Deep Worldstone Shard" xa4 in a character's
+        // cube -- without these 8 bits its own end came out a byte short and every following item
+        // failed; with them the whole 196-item file parsed, the next item a real Small Charm), then a
+        // real shared stash's "Key of Destruction" (pk3, a Pandemonium event key) proved the same byte
+        // is needed by a different code in the same category: chain-scanned, its body also ended
+        // mid-byte (offset 5, identical to the xa4/xa5 shards) and read one byte short until this byte
+        // was added, after which the rest of the stash tab -- a run of gems, Orbs and more keys --
+        // decoded. Keyed on the category so the rest of that family is covered too: the other two keys
+        // (pk1/pk2), the Uber organs (dhn/bey/mbr), the crafting essences (tes/ceh/bet/fed), the Uber
+        // Ancient summon/upgrade materials (ua1-ua5/um1-um6) and the Standard of Heroes (std) all share
+        // the identical blank-quest misc.txt shape, while the classic quest items that parse fine
+        // untouched (Horadric Cube "box", Key to the Cairn Stones "bkd", Khalim's organs, etc.) all
+        // carry a non-empty quest value and so are excluded. What these bits hold is still unknown.
+        if (isReimaginedQuestItem() && usesPostV99ItemFormat()) {
+            pFile.skipBits(8);
+        }
+        // The Reimagined "grabber"/tool items (misc.txt type "grab": the eight gem Grabbers
+        // agr/tgr/sgr/egr/rgr/mgr/kgr/ogr, the three Pandemonium-key Grabbers tkg/hkg/dkg, the Rune
+        // Pliers "rup" and Jewel Pliers "jwp") carry one fixed extra trailing byte nothing above reads
+        // -- the same unconditional fixed-byte shape as the "ques" family just above, NOT the
+        // byte-alignment quirk. Confirmed against a real shared stash's "Rune Pliers" (rup): its body
+        // ended mid-byte (bit offset 2, so alignment is irrelevant) and read exactly one byte short
+        // until this byte was added, after which the run of items after it in the rune/gem tab -- a
+        // Uber Ancient material ("Madawc's Ire" ua3), a "Key of Hate" (pk2) and an "Orb of Shadows"
+        // (ooe) -- all decoded. Keyed on the whole "grab" type, not the single code, so the sibling
+        // grabbers and pliers are covered the same way. What the byte holds is still unknown.
+        if ("grab".equals(iType) && usesPostV99ItemFormat()) {
             pFile.skipBits(8);
         }
         // Simple beltable potions sit one padding byte short in the post-v99 format whenever their
@@ -648,19 +671,25 @@ public class D2Item implements Comparable, D2ItemInterface {
         boolean isLooseRuneOrGem = (iRune || (iType != null && iType.startsWith("gem"))) && location != 6;
         if (isLooseRuneOrGem && usesPostV99ItemFormat()) {
             pFile.skipBits(8);
-            // A loose rune/gem sitting in the Horadric Cube (panel 4 -- see D2FileManager's
-            // stash/inventory/cube panel checks) can need one MORE trailing byte on top of the one
-            // just above, but only when its body lands exactly on a byte boundary -- the identical
-            // dropped-padding-byte quirk the simple potions have (see isSimpleBeltablePotion()'s
-            // comment): the generic end-of-item byte-rounding advances a byte only when there are
+            // A loose rune/gem can need one MORE trailing byte on top of the one just above, but only
+            // when its body lands exactly on a byte boundary -- the identical dropped-padding-byte
+            // quirk the simple potions (see isSimpleBeltablePotion()) and socketed runes/gems (just
+            // below) have: the generic end-of-item byte-rounding advances a byte only when there are
             // leftover bits, so a byte-aligned body silently loses that padding byte and desyncs the
-            // next item. Brute-force-confirmed against a real character with eight runes moved into
-            // the cube (Sur, Zod, Gul, Vex, Ohm, Lo, Jah, Cham): exactly the two that landed
-            // byte-aligned here (Sur, Ohm) needed +8, and the other six needed nothing -- matching
-            // the alignment rule, not the rune tier (an early guess that "high runes" needed it, or
-            // that every cube rune did, was wrong). Runes/gems loose in the inventory or stash
-            // (panel 1/5) are unaffected: only the cube has shown this second byte.
-            if (panel == 4 && (pFile.get_pos() % 8) == 0) {
+            // next item. This is purely an alignment quirk, NOT a location one -- an item's bytes are
+            // stored identically wherever it sits (panel is just a field inside the item), which is why
+            // the potion and socketed-rune rules are keyed on alignment alone. It first surfaced in the
+            // Horadric Cube (panel 4) against a real character with eight runes moved into it (Sur, Zod,
+            // Gul, Vex, Ohm, Lo, Jah, Cham): exactly the two that landed byte-aligned here, Sur and Ohm,
+            // needed +8 and the other six needed nothing -- matching the alignment rule, not the rune
+            // tier (an early guess that "high runes" needed it, or that every cube rune did, was wrong).
+            // The panel==4 guard it originally carried was just "only the cube has been seen so far", and
+            // a real shared stash then disproved it: a stash (panel 5) rune/gem tab with ten runes and
+            // several gems had exactly one byte-aligned gem here -- an Emerald (the runes and the other
+            // gems all ended mid-byte) -- and without this byte its own end came out one short and every
+            // item after it in the tab (a run of gems and Orbs) failed to load. So the guard is gone;
+            // the check is alignment only. What the padding byte holds is still unknown.
+            if ((pFile.get_pos() % 8) == 0) {
                 pFile.skipBits(8);
             }
         }
@@ -681,13 +710,20 @@ public class D2Item implements Comparable, D2ItemInterface {
         if (isSocketedRuneOrGem && usesPostV99ItemFormat() && (pFile.get_pos() % 8) == 0) {
             pFile.skipBits(8);
         }
-        // Elemental Facets (see isElementalFacet()) each carry exactly 48 extra trailing bits
-        // that nothing above reads -- confirmed in the current (post-v99) format via three
-        // independent real characters (Autumn, Rime and Thunder Facet, each appearing both
-        // unsocketed and as a socketed sub-item), every time by confirming the very next item
-        // decodes correctly afterward. What those 48 bits actually hold is still unknown. See
-        // the socket-recursion loop's comment (this file) for the other half of this fix.
-        if (isElementalFacet() && usesPostV99ItemFormat()) {
+        // Elemental Facets (see isElementalFacet()) carry 48 extra trailing bits that nothing above
+        // reads -- BUT only when flag 29 is set, exactly like the non-facet flag-29 blob just below.
+        // The 48-bit blob is that same skill blob (facets grant a level-up/death skill), a shorter
+        // variant of the 52/56-bit one; it is present iff the item actually carries the flag. This was
+        // first confirmed against three real characters' Autumn, Rime and Thunder Facets (each both
+        // unsocketed and socketed) -- every one of which had flag 29 set, so the skip read as
+        // unconditional -- until a real shared stash turned up two copies of the same unique "Spring
+        // Facet" (uid 392) side by side, one with flag 29 SET and one CLEAR: the flag-set copy needed
+        // the 48 bits as before, but the flag-clear copy needed none (chain-scanned: with the skip its
+        // own end came out 6 bytes long and every item after it in the tab failed to load; without it
+        // the next item -- a plain magic jewel -- decoded and the whole pane parsed). So the blob
+        // tracks flag 29, not the elemental-facet identity. What those 48 bits hold is still unknown.
+        // See the socket-recursion loop's comment (this file) for the other half of this fix.
+        if (isElementalFacet() && check_flag(29) && usesPostV99ItemFormat()) {
             pFile.skipBits(48);
         }
         // Flag 29 (never previously checked anywhere in this codebase) is set on every item seen

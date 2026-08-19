@@ -49,6 +49,7 @@ public class D2SharedStashReader {
 
     private D2SharedStashPane readSharedStashPane(D2BitReader bitReader, String filename, byte[] originalBytes) throws Exception {
         int stashPaneStart = bitReader.get_byte_pos();
+        int stashPaneEnd = stashPaneStart + originalBytes.length;
         D2SharedStash.Header header = D2SharedStash.Header.fromBytes(bitReader);
         // Same version drift as the .d2s character format (see D2Character.readChar() and
         // D2Item.setFormatVersion()): the header layout itself hasn't changed, but a strict
@@ -56,16 +57,26 @@ public class D2SharedStashReader {
         if (header.getVersion() < 99)
             throw new RuntimeException("Incorrect shared stash version: " + header.getVersion());
         D2Item.setFormatVersion(header.getVersion());
-        bitReader.set_byte_pos(bitReader.findNextFlag("JM", bitReader.get_byte_pos()));
+        // Find this pane's "JM" item-list marker, but only WITHIN the pane's own byte span. The scan
+        // is otherwise unbounded: with no JM after this point it returns -1, which set_byte_pos turns
+        // into a garbage position that then "reads" an absurd item count and dumps a stack trace per
+        // bogus item. A real file exposes exactly this -- "ModernSharedStashSoftCoreV2.d2i" ends in a
+        // declared-but-unused ~5.5KB trailing pane that is all zero bytes: a valid header (version
+        // 105) with no JM and no items (its garbage count came out 21930 = 0x55AA, i.e. the next
+        // marker's bytes read from position -1). Treat a pane with no in-span JM as an empty pane
+        // preserved verbatim, rather than parsing zero padding as thousands of phantom items.
+        int jmOffset = bitReader.findNextFlag("JM", bitReader.get_byte_pos());
+        if (jmOffset < 0 || jmOffset >= stashPaneEnd) {
+            return D2SharedStashPane.fromItemsPartial(new ArrayList<>(), header.getGold(),
+                    "No item-list (JM) marker in this pane -- empty/padding pane preserved verbatim", originalBytes);
+        }
+        bitReader.set_byte_pos(jmOffset);
         bitReader.skipBytes(2);
         int numItems = (int) bitReader.read(16);
         List<D2Item> result = new ArrayList<>();
         // Same situation as D2Character.readItems(): there's no reliable way to skip just one bad
         // item and resync on the next, since each item's length is only known once it has parsed
-        // successfully. Keep everything read so far in this pane and stop -- found via a real
-        // shared stash whose "rune/gem" tab turned out not to store its contents as regular items
-        // at all (still being investigated), which otherwise made every item in every pane after
-        // it, and the rest of the stash with them, fail to load too.
+        // successfully. Keep everything read so far in this pane and stop.
         for (int i = 0; i < numItems; i++) {
             try {
                 result.add(new D2Item(filename, bitReader, 75));
@@ -87,6 +98,21 @@ public class D2SharedStashReader {
         int calculatedLength = bitReader.get_byte_pos() - stashPaneStart;
         if (calculatedLength != header.getLength())
             throw new RuntimeException("Incorrect shared stash length: " + calculatedLength + " expected: " + header.getLength());
-        return D2SharedStashPane.fromItems(result, header.getGold());
+        try {
+            return D2SharedStashPane.fromItems(result, header.getGold());
+        } catch (RuntimeException pGridEx) {
+            // Every item parsed and the pane's byte length matches its header exactly, so the read is
+            // correct -- yet constructPaneGrid found two items sharing a cell. That is the signature
+            // of a "Modern"/DLC auto-arranging STACKABLE tab (this file's rune/gem/orb tab is one: 78
+            // runes, gems, Orbs, Pandemonium keys and Uber materials, many stacked on the same slot),
+            // which doesn't use the one-item-per-cell grid GoMule tiles panes on. Keep the correctly
+            // parsed items so they still appear in the flat item list and search, but mark the pane
+            // incomplete: that writes it back verbatim (originalBytes) instead of reconstructing a
+            // layout GoMule doesn't model, and hides it from the visible tab strip (see
+            // D2SharedStash.getVisibleTabCount()) -- how these stackable tabs were always meant to be
+            // handled, only now with their contents recovered instead of dropped.
+            return D2SharedStashPane.fromItemsStacked(result, header.getGold(),
+                    "Stackable tab (" + result.size() + " items) preserved verbatim: " + pGridEx.getMessage(), originalBytes);
+        }
     }
 }
