@@ -202,8 +202,15 @@ public class D2Character extends D2ItemListAdapter {
         if (cClass == null) throw new Exception("Invalid character class byte: " + lCharCode);
         iReader.set_byte_pos(27);
         iCharLevel = iReader.read(8);
-        if (iCharLevel < 1 || iCharLevel > 99)
-            throw new Exception("Invalid char level: " + iCharLevel + " (should be between 1-99)");
+        // Vanilla D2 capped characters at level 99, but the D2R "Reimagined" (D2RMM) mod raises
+        // that cap -- a real level-100 paladin save crashed here on the old "> 99" check. Picking a
+        // new fixed ceiling (100) would just re-break the instant the mod lifts the cap again: the
+        // exact trap the version check above was rewritten to avoid. The level is stored in a single
+        // byte (read(8)), so 255 is the true representable maximum and no positive value read here is
+        // structurally impossible. Reject only level 0, which no real save has and which is the
+        // tell-tale of having read this fixed-offset byte at the wrong position.
+        if (iCharLevel < 1)
+            throw new Exception("Invalid char level: " + iCharLevel + " (should be at least 1)");
         iCharClass = D2TxtFile.getCharacterCode((int) lCharCode);
         iTitleString = " Lvl " + iCharLevel + " " + D2TxtFile.getCharacterCode((int) lCharCode);
         // Old offset 177, shifted 16 bytes earlier same as the class/level fields above (this

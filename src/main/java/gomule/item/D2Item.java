@@ -621,15 +621,24 @@ public class D2Item implements Comparable, D2ItemInterface {
         }
         // The Reimagined "grabber"/tool items (misc.txt type "grab": the eight gem Grabbers
         // agr/tgr/sgr/egr/rgr/mgr/kgr/ogr, the three Pandemonium-key Grabbers tkg/hkg/dkg, the Rune
-        // Pliers "rup" and Jewel Pliers "jwp") carry one fixed extra trailing byte nothing above reads
-        // -- the same unconditional fixed-byte shape as the "ques" family just above, NOT the
-        // byte-alignment quirk. Confirmed against a real shared stash's "Rune Pliers" (rup): its body
-        // ended mid-byte (bit offset 2, so alignment is irrelevant) and read exactly one byte short
-        // until this byte was added, after which the run of items after it in the rune/gem tab -- a
-        // Uber Ancient material ("Madawc's Ire" ua3), a "Key of Hate" (pk2) and an "Orb of Shadows"
-        // (ooe) -- all decoded. Keyed on the whole "grab" type, not the single code, so the sibling
-        // grabbers and pliers are covered the same way. What the byte holds is still unknown.
-        if ("grab".equals(iType) && usesPostV99ItemFormat()) {
+        // Pliers "rup" and Jewel Pliers "jwp") carry one extra trailing byte nothing above reads --
+        // but ONLY when flag 28 is set on the item, NOT unconditionally as this rule first assumed.
+        // This started life as an unconditional "grab" +8, confirmed against a real shared stash's
+        // "Rune Pliers" (rup): its body ended mid-byte (bit offset 2, so it is not the byte-alignment
+        // quirk) and read exactly one byte short until the byte was added, after which the rest of
+        // that rune/gem tab decoded. A real character then disproved the "unconditional" part: three
+        // gem Grabbers sitting loose in its stash -- an Amethyst (agr), a Ruby (rgr) and an Emerald
+        // (mgr) Grabber -- each ALSO ended at bit offset 2 and were byte-for-byte the same "grab" type
+        // as the pliers in every misc.txt column, yet each needed ZERO trailing bits: with the +8 the
+        // agr's own end came out a byte long and every item after it (starting with a "Heaven Facet")
+        // failed to decode; without it the whole 108-item file parsed. The one bit that separates them
+        // is flag 28 -- set on the +8 Rune Pliers, clear on all three +0 grabbers, and otherwise
+        // identical (both quality 2, no sockets, no properties, identified). Flag 28 is a Reimagined-
+        // specific bit unused anywhere else in this codebase; it reads like a "this grabber is holding
+        // something" marker, the extra byte being that held payload/count. So the rule is keyed on the
+        // whole "grab" type (covering the sibling grabbers and pliers) AND gated on flag 28. What the
+        // byte actually holds is still unknown.
+        if ("grab".equals(iType) && check_flag(28) && usesPostV99ItemFormat()) {
             pFile.skipBits(8);
         }
         // Simple beltable potions sit one padding byte short in the post-v99 format whenever their

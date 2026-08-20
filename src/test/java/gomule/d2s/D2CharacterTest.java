@@ -607,4 +607,51 @@ public class D2CharacterTest {
         assertEquals("war", D2Character.classByteToAbbreviation(7));
         assertNull(D2Character.classByteToAbbreviation(8));
     }
+
+    // A real Reimagined (D2RMM) paladin that hit level 100 -- vanilla D2 caps at 99, and the old
+    // "iCharLevel > 99" guard in readChar() rejected the whole file outright ("Invalid char level:
+    // 100"), long before any item was read. The mod raises the cap; the level byte is 8 bits so any
+    // positive value is representable. This asserts the character now loads fully at level 100 with
+    // all its items intact.
+    @Test
+    public void level100ReimaginedPaladinLoadsFully() throws Exception {
+        D2TxtFile.constructTxtFiles("./d2111");
+        D2Character d2Character = new D2Character(
+                new File(Resources.getResource("charFiles/pally6.d2s").toURI()).getAbsolutePath());
+
+        assertEquals("pally", d2Character.getCharName());
+        assertEquals("Paladin", d2Character.getCharClass());
+        assertEquals(100, d2Character.getCharLevel());
+        assertFalse(d2Character.isItemsIncomplete(), d2Character.getItemsIncompleteReason());
+        assertEquals(134, d2Character.getItemList().size());
+    }
+
+    // A later re-save of the same Reimagined paladin exposed that the "grab"-type tool items (the gem
+    // Grabbers, Pandemonium-key Grabbers and Pliers) do NOT unconditionally carry an extra trailing
+    // byte -- they only carry it when flag 28 is set (see the "grab" comment in D2Item.readExtend).
+    // This save has three gem Grabbers sitting loose in the stash -- an Amethyst (agr), a Ruby (rgr)
+    // and an Emerald (mgr) Grabber -- all with flag 28 CLEAR, so all needing zero trailing bits. Under
+    // the old unconditional "grab" +8 the first one (agr) read a byte long and every item after it
+    // failed, stopping the load at item 14 of 98; the item that first failed to decode was the
+    // "Heaven Facet" immediately following the grabbers. This asserts the whole file now loads, that
+    // all three grabbers decoded, and that the previously-desynced Heaven Facet after them is back.
+    @Test
+    public void reimaginedPaladinWithFlagClearGrabbersLoadsFully() throws Exception {
+        D2TxtFile.constructTxtFiles("./d2111");
+        D2Character d2Character = new D2Character(
+                new File(Resources.getResource("charFiles/pally7.d2s").toURI()).getAbsolutePath());
+
+        assertEquals("pally", d2Character.getCharName());
+        assertEquals("Paladin", d2Character.getCharClass());
+        assertFalse(d2Character.isItemsIncomplete(), d2Character.getItemsIncompleteReason());
+        assertEquals(108, d2Character.getItemList().size());
+
+        List<D2Item> items = d2Character.getItemList();
+        assertTrue(items.stream().anyMatch(i -> "agr".equals(i.getItem_type())), "Amethyst Grabber");
+        assertTrue(items.stream().anyMatch(i -> "rgr".equals(i.getItem_type())), "Ruby Grabber");
+        assertTrue(items.stream().anyMatch(i -> "mgr".equals(i.getItem_type())), "Emerald Grabber");
+        // The item that first desynced under the old rule -- proves the grabber boundaries are right.
+        assertTrue(items.stream().anyMatch(i -> i.getItemName() != null
+                && i.getItemName().contains("Heaven Facet")), "Heaven Facet after the grabbers");
+    }
 }
