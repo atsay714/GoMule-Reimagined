@@ -805,4 +805,64 @@ public class D2CharacterTest {
         assertTrue(items.stream().anyMatch(i -> "Opalvein".equals(i.getItemName())),
                 "Opalvein still decodes");
     }
+
+    // Same Paladin again, saved later still, this time with scrolls in the belt. It failed to load
+    // at "Item 102 of 135": a Scroll of Identify ("isc") read one byte short and the item after it
+    // decoded as garbage. Scrolls are flag-22 simple, single-cell, Beltable items -- the same shape
+    // as the potions, running through the same readPropertiesPots branch -- so they lose their
+    // trailing padding byte the same way when their compact body happens to end byte-aligned. All
+    // 19 scrolls in the fixture corpus before this one happened to end mid-byte, so the quirk had
+    // never had a chance to show up. See isSimpleBeltableConsumable() and its call site.
+    @Test
+    public void reimaginedPaladinWithByteAlignedIdentifyScrollsLoadsFully() throws Exception {
+        D2TxtFile.constructTxtFiles("./d2111");
+        D2Character d2Character = new D2Character(
+                new File(Resources.getResource("charFiles/pally11.d2s").toURI()).getAbsolutePath());
+
+        assertEquals("pally", d2Character.getCharName());
+        assertEquals("Paladin", d2Character.getCharClass());
+        assertFalse(d2Character.isItemsIncomplete(), d2Character.getItemsIncompleteReason());
+
+        // 135 character items (the load used to stop at 101 of them) plus the mercenary's 10.
+        List<D2Item> items = d2Character.getItemList();
+        assertEquals(145, items.size());
+        assertEquals(10, d2Character.getMercItemNr());
+
+        // Assert the scrolls BY LENGTH, because the length in bytes is exactly the quantity the bug
+        // got wrong -- "it parsed" is not enough. This belt carries both scroll codes at once, and
+        // they are the whole argument for the fix being alignment-gated rather than a flat "scrolls
+        // carry an extra byte": the three Scrolls of Identify land byte-aligned and are 10 bytes,
+        // while the two Scrolls of Town Portal end mid-byte and are 9. An unconditional class skip
+        // would make the "tsc" pair 10 as well and desync the file all over again.
+        List<Integer> identifyScrollLengths = new ArrayList<>();
+        List<Integer> townPortalScrollLengths = new ArrayList<>();
+        int lastIdentifyScrollIdx = -1;
+        for (int i = 0; i < items.size(); i++) {
+            if ("isc".equals(items.get(i).getItem_type())) {
+                identifyScrollLengths.add(items.get(i).getItemLength());
+                lastIdentifyScrollIdx = i;
+            } else if ("tsc".equals(items.get(i).getItem_type())) {
+                townPortalScrollLengths.add(items.get(i).getItemLength());
+            }
+        }
+        assertEquals(Arrays.asList(10, 10, 10), identifyScrollLengths,
+                "the byte-aligned Scrolls of Identify keep their padding byte");
+        assertEquals(Arrays.asList(9, 9), townPortalScrollLengths,
+                "the mid-byte Scrolls of Town Portal must NOT get one");
+
+        // The first Scroll of Identify is the one the old parser desynced on: it sits at index 100,
+        // immediately before a charm. That charm decoding into a real, recognizable item is what
+        // proves the scroll's length, not merely that nothing threw.
+        int firstIdentifyScrollIdx = items.indexOf(items.stream()
+                .filter(i -> "isc".equals(i.getItem_type())).findFirst().orElseThrow());
+        assertEquals("cm3", items.get(firstIdentifyScrollIdx + 1).getItem_type(),
+                "the Queen's Call charm right after the first Scroll of Identify decodes");
+        assertEquals("Dire Circlet", items.get(firstIdentifyScrollIdx + 2).getItemName(),
+                "and the item after that one too");
+
+        // The last Scroll of Identify is immediately followed by the two town-portal scrolls, so the
+        // run of scrolls resyncs cleanly across both codes rather than only at the first one.
+        assertEquals("tsc", items.get(lastIdentifyScrollIdx + 1).getItem_type(),
+                "the belt's scroll run continues correctly after the last Scroll of Identify");
+    }
 }
