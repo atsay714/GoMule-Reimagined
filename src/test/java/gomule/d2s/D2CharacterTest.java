@@ -7,6 +7,8 @@ import org.junit.jupiter.api.Test;
 import randall.d2files.D2TxtFile;
 
 import java.io.File;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -701,5 +703,106 @@ public class D2CharacterTest {
         // nothing threw.
         assertEquals("Raven Frost", items.get(opalveinIdx + 1).getItemName(),
                 "the ring right after Opalvein decodes");
+    }
+
+    // Same Paladin, saved a little later, with a "Mara's Kaleidoscope" (uid 272) in the stash. It
+    // failed to load at "Item 102 of 123": the amulet's flag-29 trailing blob read 64 bits short and
+    // the item after it decoded as garbage. Mara's carries NO item_skillonattack stat (its grants are
+    // +2 all skills / all resist / all stats), so the old "+64 when stat 195 is present" rule could
+    // not see it -- the blob's own count byte can, and does (see readFlag29SkillBlobLengthInBits).
+    @Test
+    public void reimaginedPaladinWithMarasKaleidoscopeLoadsFully() throws Exception {
+        D2TxtFile.constructTxtFiles("./d2111");
+        D2Character d2Character = new D2Character(
+                new File(Resources.getResource("charFiles/pally9.d2s").toURI()).getAbsolutePath());
+
+        assertEquals("pally", d2Character.getCharName());
+        assertEquals("Paladin", d2Character.getCharClass());
+        assertFalse(d2Character.isItemsIncomplete(), d2Character.getItemsIncompleteReason());
+
+        // 123 character items (the load used to stop at 102 of them) plus the mercenary's 10.
+        List<D2Item> items = d2Character.getItemList();
+        assertEquals(133, items.size());
+        assertEquals(10, d2Character.getMercItemNr());
+
+        int marasIdx = -1;
+        for (int i = 0; i < items.size(); i++) {
+            if ("Mara's Kaleidoscope".equals(items.get(i).getItemName())) {
+                marasIdx = i;
+                break;
+            }
+        }
+        assertTrue(marasIdx >= 0, "Mara's Kaleidoscope decoded");
+
+        // Mara's has none of the chance-to-cast stats: what marks its longer blob is the count byte
+        // inside the blob itself, not any property. Assert the absence so a future re-introduction of
+        // a stat-keyed rule can't quietly "explain" this item the wrong way again.
+        D2Item maras = items.get(marasIdx);
+        assertTrue(maras.getPropCollection().stream()
+                        .noneMatch(o -> ((gomule.item.D2Prop) o).getPNum() == 195),
+                "Mara's does NOT carry the on-attack chance-to-cast stat");
+        assertTrue(maras.getPropCollection().stream()
+                        .anyMatch(o -> ((gomule.item.D2Prop) o).getPNum() == 127),
+                "Mara's grants +all skills");
+
+        // The item right after Mara's is where the old parser desynced -- it decoding into a real,
+        // recognizable item is what proves the amulet's length, not merely that nothing threw.
+        assertEquals("bag", items.get(marasIdx + 1).getItem_type(),
+                "the Gem Bag right after Mara's decodes");
+
+        // Opalvein still loads in this file too: the count byte reproduces the on-attack case that
+        // the stat-keyed rule used to cover, so replacing that rule is not a regression.
+        assertTrue(items.stream().anyMatch(i -> "Opalvein".equals(i.getItemName())),
+                "Opalvein still decodes under the count-byte rule");
+    }
+
+    // Same Paladin again, saved later still. It failed to load at "Item 81 of 120": a unique ring
+    // "Nature's Peace" in the stash over-read by exactly one byte, so the item after it decoded as
+    // garbage. The ring is an elemental-skill grantor, so the parser gave its flag-29 trailing blob
+    // the "+4 bits" the old rule reserved for those -- and this ring is the one item in the whole
+    // fixture corpus whose bit offset makes 52-vs-56 actually observable. It reads correctly at a
+    // flat 52; see readFlag29SkillBlobLengthInBits() for why the +4 never existed at all.
+    @Test
+    public void reimaginedPaladinWithNaturesPeaceRingLoadsFully() throws Exception {
+        D2TxtFile.constructTxtFiles("./d2111");
+        D2Character d2Character = new D2Character(
+                new File(Resources.getResource("charFiles/pally10.d2s").toURI()).getAbsolutePath());
+
+        assertEquals("pally", d2Character.getCharName());
+        assertEquals("Paladin", d2Character.getCharClass());
+        assertFalse(d2Character.isItemsIncomplete(), d2Character.getItemsIncompleteReason());
+
+        // 120 character items (the load used to stop at 80 of them) plus the mercenary's 10.
+        List<D2Item> items = d2Character.getItemList();
+        assertEquals(130, items.size());
+        assertEquals(10, d2Character.getMercItemNr());
+
+        // This character carries three Nature's Peace rings. Assert all three BY LENGTH, because the
+        // length in bytes is exactly the quantity the bug got wrong -- "it parsed" is not enough,
+        // since the old code produced a plausible-looking ring here too, just one byte too long.
+        // Only the third one's blob starts at a bit offset where the old +4 survived the following
+        // byte-align; the first two are the unobservable case and must stay exactly as they were.
+        List<Integer> naturesPeaceLengths = new ArrayList<>();
+        int lastNaturesPeaceIdx = -1;
+        for (int i = 0; i < items.size(); i++) {
+            if ("Nature's Peace".equals(items.get(i).getItemName())) {
+                naturesPeaceLengths.add(items.get(i).getItemLength());
+                lastNaturesPeaceIdx = i;
+            }
+        }
+        assertEquals(Arrays.asList(52, 49, 58), naturesPeaceLengths,
+                "the third Nature's Peace is 58 bytes, not the 59 the +4 rule produced");
+
+        // The item right after that ring is where the old parser desynced -- it decoding into a real,
+        // recognizable item is what proves the ring's length, not merely that nothing threw.
+        assertEquals("cs2", items.get(lastNaturesPeaceIdx + 1).getItem_type(),
+                "the Renewed Black Cleft charm right after Nature's Peace decodes");
+        assertEquals("Pain Mask", items.get(lastNaturesPeaceIdx + 2).getItemName(),
+                "and the item after that one too");
+
+        // Opalvein is in this file as well, so the separate bit-47 rule (+64 bits) stays covered:
+        // dropping the elemental-skill +4 must not disturb the extra-record case.
+        assertTrue(items.stream().anyMatch(i -> "Opalvein".equals(i.getItemName())),
+                "Opalvein still decodes");
     }
 }

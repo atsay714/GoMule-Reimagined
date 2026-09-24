@@ -459,14 +459,14 @@ public class D2Item implements Comparable, D2ItemInterface {
             // (uid 146) with "Heaven Facet" jewels socketed in -- exposed the difference: its facets
             // only decoded, and the ~110 items after it only parsed, once these bits were skipped here
             // instead of after the socket loop. The amount is exactly the same as that trailing skip
-            // (see hasElementalSkillProperty()); the trailing skip itself is suppressed for socketed
-            // items (its iSocketNrFilled == 0 guard) so the bits are never counted twice. Confirmed
-            // against three copies of that scepter in one character -- socketed with jewels, with
-            // empty sockets, and un-socketed -- whose trailing blobs are byte-for-byte the same
-            // structure regardless of sockets, all decoding only at this amount. Kept narrow
+            // (see readFlag29SkillBlobLengthInBits()); the trailing skip itself is suppressed for
+            // socketed items (its iSocketNrFilled == 0 guard) so the bits are never counted twice.
+            // Confirmed against three copies of that scepter in one character -- socketed with
+            // jewels, with empty sockets, and un-socketed -- whose trailing blobs are byte-for-byte
+            // the same structure regardless of sockets, all decoding only at this amount. Kept narrow
             // (socketed + flag-29 + not a Facet, which has its own handling).
             if (check_flag(29) && !isElementalFacet() && usesPostV99ItemFormat()) {
-                pFile.skipBits(hasElementalSkillProperty() ? 56 : 52);
+                pFile.skipBits(readFlag29SkillBlobLengthInBits(pFile));
             }
             pFile.set_pos(pFile.getNextByteBoundaryInBits());
             for (int i = 0; i < iSocketNrFilled; i++) {
@@ -740,49 +740,74 @@ public class D2Item implements Comparable, D2ItemInterface {
         // inventories and a real shared stash: every elemental Facet (isElementalFacet()) has it set,
         // and so do a unique ring ("Sling"), unique gauntlets ("Steelrend") and a unique scepter
         // ("Hand of Blessed Light"). Facets get their own, different (48-bit) skip above; the rest
-        // carry a trailing blob of 52 bits, or 56 when the item grants an elemental-skill bonus (see
-        // hasElementalSkillProperty() for the full evidence and why the amount is keyed on
-        // item_elemskill rather than the properties.txt func number). What the blob holds is still
+        // carry a trailing blob of a flat 52 bits, plus a further 64 when the blob's own bit 47 is
+        // set. See readFlag29SkillBlobLengthInBits() for both that bit and why the base is a
+        // constant -- the earlier "+4 bits for an elemental-skill grant" rule was measurable on
+        // exactly one item in the corpus, and on that one it was wrong. What the blob holds is still
         // unknown; this is a length heuristic, not a decode.
         // Only for items with NO socketed sub-items: when a flag-29 item is actually socketed, these
         // same bits appear BEFORE its sockets instead and are skipped up in the socket loop (see the
         // "Hand of Blessed Light" comment there), so counting them again here would double-skip.
         if (iSocketNrFilled == 0 && check_flag(29) && !isElementalFacet() && usesPostV99ItemFormat()) {
-            // The base flag-29 skill blob is 52 bits, or 56 when the item grants an elemental-skill
-            // bonus (see hasElementalSkillProperty()). A flag-29 item whose granted skill is a
-            // "chance to cast ... on attack" (item_skillonattack, stat 195 -- the "att-skill"
-            // property) carries a further 64 bits on top of that. This was found and confirmed
-            // against a real Paladin character's unique ring "Opalvein" (uid 415, "15% Chance to cast
-            // level 2 Flame Wave on attack"): its body read exactly 64 bits short, desyncing the very
-            // next item, and adding these 64 bits was the only offset that let the rest of the file
-            // decode -- the next item coming out as a real, recognizable unique ring ("Raven Frost")
-            // and the whole 125-item character then reaching a clean, complete load, cross-checked
-            // against an independent brute-force chain-scan of the raw bytes that put the true next
-            // boundary exactly where +64 lands. Keyed on the stat (item_skillonattack), not the item
-            // code, deliberately -- the point is the "cast on attack" grant, not the ring. Crucially
-            // this is NOT "any chance-to-cast": the same file carried a "Wisp Projector" and a
-            // "Carrion Wind", both also flag-29 rings with a chance-to-cast, but on *striking*
-            // (item_skillonhit, stat 198) / *when struck* (item_skillongethit, 201) -- and both
-            // decoded correctly at the standard 52 with NO extra bits, so the extra length belongs
-            // specifically to the on-attack variant. What these 64 bits hold is still unknown; this
-            // stays a length heuristic, not a decode of the blob. Left on the non-socketed path only,
-            // matching the base blob just above (a socketed cast-on-attack item, if one can even
-            // exist -- rings, the only confirmed carriers, can't be socketed -- would carry its blob
-            // before its sockets, like the other flag-29 items; no such sample has turned up).
-            pFile.skipBits((hasElementalSkillProperty() ? 56 : 52) + (hasSkillOnAttackProperty() ? 64 : 0));
+            pFile.skipBits(readFlag29SkillBlobLengthInBits(pFile));
         }
     }
 
-    // True when this item's own property list carries an item_skillonattack stat (id 195) -- the
-    // "chance to cast ... on attack" grant. Read straight off the parsed stats (iProps) rather than
-    // the unique/set recipe so it also catches the same grant arriving as a magic/rare affix, and so
-    // it reflects what is actually stored in this item. See the flag-29 blob's caller for why the
-    // presence of this stat lengthens that blob by 64 bits.
-    private boolean hasSkillOnAttackProperty() {
-        for (Object o : iProps) {
-            if (((D2Prop) o).getPNum() == 195) return true;
-        }
-        return false;
+    // Length in bits of the flag-29 skill blob for THIS item, read from the blob itself rather than
+    // guessed from the item's properties. Does not consume anything: it peeks the one bit it needs
+    // and rewinds, so both callers can then skip the amount returned.
+    //
+    // The blob turned out to have a readable shape. Dumping it for every flag-29 item across the
+    // whole fixture corpus (77 occurrences over seventeen real characters, socketed and not,
+    // including every "Hand of Blessed Light") shows the same layout every time:
+    //
+    //     bits  0-32   per-item header (varies; content still unknown)
+    //     bits 33-39   the constant marker 1000111 -- identical in all 77 samples
+    //     bits 40-46   always zero in every sample seen
+    //     bit  47      set when the blob carries one extra 64-bit record past its base
+    //
+    // The base is a flat 52 bits for every flag-29 item. It used to be 52 "or 56 when the item
+    // grants an elemental-skill bonus (properties.txt fireskill/coldskill/... -> item_elemskill)",
+    // but that +4 turned out never to have existed. Whether the base is 52 or 56 is only OBSERVABLE
+    // at some bit offsets: the blob is followed by a byte-align, so 52 and 56 land on the same byte
+    // unless the blob starts at bit offset 1-4 within its byte (for offsets 5, 6, 7 and 0 the align
+    // swallows the difference). Dumping all 77 flag-29 blobs across the whole fixture corpus with
+    // that observability computed settles it: of the 20 blobs the old rule gave 56, NINETEEN sit at
+    // offsets where 52 and 56 are indistinguishable -- so the rule was never once confirmed, it just
+    // never got a chance to be wrong. The single observable one is a unique ring "Nature's Peace"
+    // in a Paladin's stash (the pally10.d2s fixture), and there 56 is WRONG: it over-read by one
+    // byte and desynced the next item at "Item 81 of 120". All 37 observable base-52 blobs are
+    // correct, and dropping the rule to a flat 52 leaves every other fixture byte-identical (the 19
+    // unobservable items cannot move) while completing this one. The earlier note that a "Sling"
+    // ring "needs 56" was the artifact: every Sling blob in the corpus sits at an unobservable
+    // offset. What the 52 bits hold is still unknown; this stays a length heuristic, not a decode.
+    //
+    // Bit 47 is what actually drives the extra length, and reading it replaces the earlier heuristic
+    // that added 64 bits when the item carried an item_skillonattack stat (id 195, "chance to cast
+    // ... on attack"). That rule was inferred from a single sample -- a unique ring "Opalvein"
+    // (uid 415/416, "15% Chance to cast level 2 Flame Wave on attack") -- and it fit only because
+    // Opalvein happens to have bit 47 set. It was still the wrong discriminator: a Paladin's "Mara's
+    // Kaleidoscope" (uid 272) desynced the same way at "Item 102 of 123" while carrying no
+    // chance-to-cast stat at all (its grants are +2 all skills, all resist, all stats), and no
+    // property it does carry separates it from the flag-29 items that need no extra bits -- both
+    // "The Stone of Jordan" and "Baal's Cryptic Amulet" also grant +all skills (stat 127) and both
+    // decode at the plain 52. Bit 47 separates all of them cleanly: set for exactly Opalvein and
+    // Mara's, clear for every other sample in the corpus. Cross-checked against an independent
+    // brute-force chain-scan of the raw bytes, which puts the true item boundary after Mara's
+    // exactly where 52 + 64 lands.
+    //
+    // Read as a single flag deliberately. Bits 40-46 being uniformly zero would also fit a wider
+    // count field (bit 47 being its low end) that simply never exceeded one record in any real save,
+    // but nothing observed distinguishes the two, and a flag cannot over-skip if some future item
+    // puts unexpected bits there. If an item ever turns up short by a multiple of 64, that wider
+    // field is the first thing to look at. What the 64 bits hold is still unknown; this stays a
+    // length heuristic, not a decode of the blob.
+    private int readFlag29SkillBlobLengthInBits(D2BitReader pFile) {
+        int lStart = pFile.get_pos();
+        pFile.skipBits(47);
+        boolean lHasExtraRecord = pFile.read(1) == 1;
+        pFile.set_pos(lStart);
+        return 52 + (lHasExtraRecord ? 64 : 0);
     }
 
     private void readExtend1(D2BitReader pFile) throws Exception {
@@ -1056,46 +1081,6 @@ public class D2Item implements Comparable, D2ItemInterface {
         if (statName.equals("")) return false;
         D2TxtFileItemProperties statRow = D2TxtFile.ITEM_STAT_COST.searchColumns("Stat", statName);
         return statRow != null && !statRow.get("op").equals("");
-    }
-
-    // The flag-29 trailing skill blob is 4 bits longer for an item that grants an "elemental skill"
-    // bonus -- properties.txt's fireskill/coldskill/lightningskill/poisonskill/magicskill, all of
-    // which resolve to the item_elemskill stat -- than for one that only grants named/fixed skills
-    // (oskill, aura, single skill, +class skills, skill tab). Both an elemental-skill property and a
-    // +class-skills property (item_addclassskills, e.g. "pal"/"dru") happen to share properties.txt
-    // func1 == 21 in this mod's data, so keying on func 21 (as this originally did) wrongly gave the
-    // extra 4 bits to +class-skills items too. Real examples pin the rule to item_elemskill, not
-    // func 21: a unique ring "Sling" (a magicskill/item_elemskill item) needs 56, while a unique
-    // scepter "Hand of Blessed Light" (+2 Paladin skills via item_addclassskills, plus single-skill,
-    // oskill and chance-to-cast grants, but no item_elemskill) needs 52 -- confirmed three ways from
-    // three copies of that scepter in one character (socketed with jewels, with empty sockets, and
-    // un-socketed), all of which decoded and let the rest of the file parse only at 52, not 56, and
-    // whose trailing blobs are byte-for-byte the same structure regardless of sockets. A unique pair
-    // of gauntlets "Steelrend" (item_aura, no item_elemskill) is the other confirmed 52. Checks every
-    // property slot this item's recipe (unique or set) could use; uniqueitems.txt goes up to prop12,
-    // setitems.txt up to prop9 plus the five threshold slots' "a"/"b" pairs. What the 4 bits hold is
-    // still unknown; this stays a length heuristic, not a decode of the blob.
-    private boolean hasElementalSkillProperty() {
-        D2TxtFileItemProperties recipeRow = iUnique
-                ? D2TxtFile.UNIQUES.searchByID(unique_id)
-                : (iSet ? iSetItemRow : null);
-        if (recipeRow == null) return false;
-        for (int x = 1; x <= 12; x++) {
-            if (propertyGrantsElementalSkill(recipeRow.get("prop" + x))) return true;
-        }
-        if (iSet) {
-            for (int x = 1; x <= 5; x++) {
-                if (propertyGrantsElementalSkill(recipeRow.get("aprop" + x + "a"))) return true;
-                if (propertyGrantsElementalSkill(recipeRow.get("aprop" + x + "b"))) return true;
-            }
-        }
-        return false;
-    }
-
-    private boolean propertyGrantsElementalSkill(String pPropertyCode) {
-        if (pPropertyCode.equals("")) return false;
-        D2TxtFileItemProperties propRow = D2TxtFile.PROPS.searchColumns("code", pPropertyCode);
-        return propRow != null && "item_elemskill".equals(propRow.get("stat1"));
     }
 
     private void addSetProperties(D2TxtFileItemProperties fullsetRow) {
