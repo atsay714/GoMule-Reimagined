@@ -202,6 +202,20 @@ public class D2Item implements Comparable, D2ItemInterface {
                 || "wpot".equals(pType) || "spot".equals(pType) || "scro".equals(pType);
     }
 
+    // The Reimagined buff-potion family: misc.txt type "wpot" with a non-empty "spelldesc" column.
+    // The mod added eight single-cell beltable potions on top of the classic Thawing Potion -- the
+    // Magic Find ("mfp") and Experience ("xpp") potions and the six Sunder Potions (fsp/csp/lsp/psp/
+    // msp/php) -- and each carries one extra trailing byte the classic potions don't (see the
+    // trailing-skip call site for the evidence). "spelldesc" is what separates them cleanly: all
+    // eight mod potions set it to 1 and carry a named buff "state" (mfpot1state, potionsunderfire,
+    // ...), while the two classic potions of this shape -- Thawing ("wms", type wpot) and Stamina
+    // ("vps", type spot) -- leave it empty. Keyed on that pair of columns rather than a code list so
+    // the family stays covered, and deliberately NOT on "spelldesc" alone, which is also set on
+    // gems, runes and quest items that have nothing to do with this.
+    private boolean isReimaginedBuffPotion() {
+        return "wpot".equals(iType) && iItemType != null && !"".equals(iItemType.get("spelldesc"));
+    }
+
     // The Reimagined/D2R quest-item family that carries one fixed extra trailing byte (see the
     // trailing-skip call site for the full evidence): every "type == ques" item whose misc.txt "quest"
     // column is blank. That blank column is what separates the mod's added quest items (Worldstone
@@ -648,6 +662,35 @@ public class D2Item implements Comparable, D2ItemInterface {
         // whole "grab" type (covering the sibling grabbers and pliers) AND gated on flag 28. What the
         // byte actually holds is still unknown.
         if ("grab".equals(iType) && check_flag(28) && usesPostV99ItemFormat()) {
+            pFile.skipBits(8);
+        }
+        // The Reimagined buff potions (see isReimaginedBuffPotion()) carry one extra trailing byte
+        // that the classic potions don't. Found in a real modern shared stash: a "Magic Find Potion"
+        // ("mfp") sitting last in the Uber-materials tab. Every one of that tab's 79 items decoded
+        // into a real, recognizable item, yet the pane came out one byte short of its own declared
+        // length (1090 against a header saying 1091), and the potion is the only item that can
+        // absorb it -- the 78 items before it are the regular 18-byte Reimagined quest items whose
+        // chain would visibly break one byte earlier.
+        // That the missing byte belongs to the potion and not to the pane is settled by a different
+        // fixture: WarlockCharmSharedStashSoftCoreV2.d2i's first tab ends with an Antidote Potion
+        // ("yps"), one of the confirmed byte-aligned padding-byte cases, at 10 bytes -- and that
+        // pane's length checks out exactly. So a byte-aligned simple potion sitting last in a pane
+        // ends flush with the pane end, and panes carry no trailing byte of their own; the extra
+        // byte here is the Magic Find Potion's.
+        // Only "mfp" is directly confirmed -- it is the sole sample of this family in any save
+        // available, fixtures and live files alike. The other seven are included by structural
+        // analogy, on the strength of being byte-for-byte the same misc.txt shape (compactsave,
+        // Beltable, single-cell, a named buff state, spelldesc set) and having been added by the
+        // same mod in the same pass; the alternative, a two-code list, would silently miss the six
+        // Sunder Potions a player is just as likely to be holding. If a Sunder Potion ever reads
+        // wrong, this is the first rule to re-check.
+        // Left unconditional, like the "rvl"/"rvs"/"elix" skips above rather than alignment-gated
+        // like the potion padding byte below. With a single sample the two are indistinguishable:
+        // this potion's body happens to end byte-aligned, so "+8 fixed, then the padding byte" and
+        // "+16 flat" land on the very same byte. What the byte holds is still unknown -- plausibly
+        // the buff duration or charge count these potions need and the classic ones don't -- so
+        // this stays a length heuristic, not a decode.
+        if (isReimaginedBuffPotion() && usesPostV99ItemFormat()) {
             pFile.skipBits(8);
         }
         // Simple beltable consumables sit one padding byte short in the post-v99 format whenever
@@ -1299,13 +1342,60 @@ public class D2Item implements Comparable, D2ItemInterface {
         // anything not confirmed to be on the current format.
         if (quality == 5) {
             if (usesPostV99ItemFormat() && iSetItemRow != null) {
+                boolean[] lRollsAValue = new boolean[6];
+                int lRollingThresholds = 0;
                 for (int x = 1; x <= 5; x++) {
-                    boolean rollsAValue = !iSetItemRow.get("amin" + x + "a").equals("")
+                    lRollsAValue[x] = !iSetItemRow.get("amin" + x + "a").equals("")
                             || !iSetItemRow.get("amin" + x + "b").equals("")
                             || needsStoredBaseValue(iSetItemRow.get("aprop" + x + "a"))
                             || needsStoredBaseValue(iSetItemRow.get("aprop" + x + "b"));
-                    if (rollsAValue) {
-                        readProperties(pFile, x + 1);
+                    if (lRollsAValue[x]) lRollingThresholds++;
+                }
+                if (lRollingThresholds > 0) {
+                    for (int x = 1; x <= 5; x++) {
+                        if (lRollsAValue[x]) {
+                            readProperties(pFile, x + 1);
+                        }
+                    }
+                } else {
+                    // setitems.txt records no rolling threshold at all for this item, yet the item
+                    // may still carry stored bonus lists -- so the table is not describing the item
+                    // in the save, and the only per-item evidence left is the lSet flags. Fall back
+                    // to them (one list per set flag), which is what the pre-v99 path below has
+                    // always done.
+                    //
+                    // This is NOT a second opinion on the table: it fires only when the table is
+                    // entirely silent (no aprop/amin on any of the five thresholds), never to
+                    // second-guess a row that does describe a threshold. That distinction is the
+                    // whole rule. Keying on "the table is silent" rather than "trust lSet" matters
+                    // because lSet is demonstrably NOT the count in general: making the post-v99
+                    // path lSet-driven outright breaks six fixture files (an Immortal King's Stone
+                    // Crusher, for one, has four lSet flags but stores five lists), while the
+                    // table-driven count is right for all 215 post-v99 set items in the corpus whose
+                    // row says anything at all. Conversely, for every one of the 66 post-v99 items
+                    // whose row is silent, lSet is also all-zero, so this branch is a measured no-op
+                    // across the entire fixture corpus -- it changes exactly zero of the 281
+                    // post-v99 set items already covered by tests.
+                    //
+                    // Found against a real shared stash: a set ring "Vampire's Crusade" (set ID 194,
+                    // "Hades' Underworld") in the modern stash's second tab. This fork's shipped
+                    // d2111/setitems.txt has no aprop columns whatsoever for that row, so the parser
+                    // read zero bonus lists and ended the ring 20 bytes early, desyncing the tab at
+                    // "Item 7 of 51". The ring's lSet flags are [0,1,0,1,0] and it does store exactly
+                    // two lists -- decoded, they are all-resistances +5 and all-resistances +10, the
+                    // natural two-piece/four-piece shape -- and reading those two lands the item's
+                    // end on byte 1387, which an independent brute-force chain-scan of the raw bytes
+                    // independently identified as the true next-item boundary. The table is simply
+                    // stale here: the same ring appears seven times across the fixture corpus, every
+                    // one with all-zero lSet flags and no stored lists, which is also why the
+                    // discrepancy stayed invisible until a copy turned up with thresholds actually
+                    // rolled. Note this means the stored-list count is a property of the individual
+                    // item, not of the item type -- the same set ring stores zero lists in one save
+                    // and two in another -- so no table alone can ever be the whole answer.
+                    for (int x = 0; x < 5; x++) {
+                        if (lSet[x] == 1) {
+                            readProperties(pFile, x + 2);
+                        }
                     }
                 }
             } else {

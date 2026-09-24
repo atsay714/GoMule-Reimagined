@@ -2,6 +2,7 @@ package gomule.d2i;
 
 import com.google.common.io.BaseEncoding;
 import com.google.common.io.Resources;
+import gomule.item.D2Item;
 import gomule.item.D2ItemRenderer;
 import gomule.util.D2BitReader;
 import org.junit.jupiter.api.Test;
@@ -370,5 +371,90 @@ public class D2SharedStashReaderTest {
         return pane.getItems().stream()
                 .map(it -> D2ItemRenderer.itemDump(it, true).replace("\r", ""))
                 .collect(Collectors.toList());
+    }
+
+    // A sixth real shared stash, the same Reimagined mod stash saved later still, in which TWO
+    // separate tabs were broken at once.
+    //
+    // Tab 2 (pane 1) stopped at "Item 7 of 51" with the usual null-message NullPointerException. The
+    // culprit was a set ring, "Vampire's Crusade" (set ID 194, "Hades' Underworld"), whose stored
+    // partial-set bonus lists the parser skipped entirely: this fork's d2111/setitems.txt has no
+    // aprop columns at all for that row, so the "one list per threshold that rolls a value" rule
+    // counted zero, and the ring ended 20 bytes early. The ring's own lSet flags say otherwise, and
+    // reading one list per set flag recovers exactly the two lists it really stores (all-resistances
+    // +5 and +10), ending the ring on byte 1387 -- the boundary an independent brute-force chain-scan
+    // of the raw bytes independently identified. See D2Item.readExtend2()'s fallback comment; the
+    // point is that the same ring appears seven times across the fixture corpus with all-zero flags
+    // and no stored lists, so the stored-list count is a property of the individual item rather than
+    // of the item type, and no data table alone can settle it.
+    //
+    // Tab 6 (pane 5) failed differently: all 79 of its items decoded, but the pane came out one byte
+    // short of its declared length ("Incorrect shared stash length: 1090 expected: 1091"), so the
+    // whole pane was discarded and its items lost. The last item is a "Magic Find Potion" ("mfp"),
+    // one of the mod's added buff potions, which carries an extra trailing byte the classic potions
+    // don't (see D2Item.isReimaginedBuffPotion()).
+    @Test
+    public void sixthRealWorldStashWithSetBonusRingAndBuffPotionLoadsBothBrokenTabs() throws Exception {
+        D2TxtFile.constructTxtFiles("./d2111");
+        String filename = new java.io.File(
+                Resources.getResource("sharedStash/SetBonusSharedStashSoftCoreV2.d2i").toURI())
+                .getAbsolutePath();
+
+        D2SharedStash stash = new D2SharedStashReader().readStash(filename);
+
+        assertEquals(7, stash.getPanes().size());
+
+        // Tab 2: used to stop at 6 items, now loads all 51.
+        assertFalse(stash.getPane(1).isIncomplete(), "second tab should load completely");
+        assertEquals(51, stash.getPane(1).getItems().size());
+
+        // The ring that broke it. Assert it BY LENGTH: the byte length is exactly what the bug got
+        // wrong, and "it parsed" was never the issue -- the old code produced a plausible-looking
+        // "Vampire's Crusade" here too, just 20 bytes too short.
+        D2Item ring = stash.getPane(1).getItems().stream()
+                .filter(it -> "Vampire's Crusade".equals(it.getItemName()))
+                .findFirst().orElseThrow(() -> new AssertionError("Vampire's Crusade should decode"));
+        assertEquals(46, ring.getItemLength(), "the set ring is 46 bytes, not the 26 the old rule produced");
+
+        // Its two recovered bonus lists are the whole point of the fix: all-resistances +5 and +10.
+        // Assert the actual decoded values, not just that some properties exist -- a wrong offset
+        // would still have produced *some* stats.
+        for (int statId : new int[]{39, 41, 43, 45}) {
+            List<Integer> values = new java.util.ArrayList<>();
+            for (Object o : ring.getPropCollection()) {
+                gomule.item.D2Prop pr = (gomule.item.D2Prop) o;
+                if (pr.getPNum() == statId) values.add(pr.getPVals()[0]);
+            }
+            assertEquals(java.util.Arrays.asList(5, 10), values,
+                    "stat " + statId + " should carry the two recovered set-bonus rolls");
+        }
+
+        // The item right after the ring is where the old parser desynced -- it decoding into a real,
+        // recognizable item is what proves the ring's length, not merely that nothing threw.
+        int ringIdx = stash.getPane(1).getItems().indexOf(ring);
+        assertEquals("Eternal Sleep", stash.getPane(1).getItems().get(ringIdx + 1).getItemName(),
+                "the set amulet right after Vampire's Crusade decodes");
+
+        // Tab 6: all 79 items are recovered now instead of the pane being discarded wholesale. It
+        // stays "incomplete" on purpose -- it is one of the DLC stackable tabs, preserved verbatim
+        // and hidden from the tab strip -- but its contents now reach the flat item list and search.
+        assertEquals(79, stash.getPane(5).getItems().size(), "the Uber-materials tab keeps its items");
+        assertTrue(stash.getPane(5).isIncomplete(), "it is a stackable tab, still preserved verbatim");
+        assertNotNull(stash.getPane(5).getOriginalBytes());
+
+        // The buff potion that used to cost the whole pane its byte count, asserted by length: 11
+        // bytes, one more than the 10 the classic byte-aligned potions come to.
+        D2Item potion = stash.getPane(5).getItems().get(stash.getPane(5).getItems().size() - 1);
+        assertEquals("mfp", potion.getItem_type());
+        assertEquals(11, potion.getItemLength(), "the Magic Find Potion carries one byte the classic potions don't");
+
+        // Nothing regressed for the tabs that already worked, and the two hidden tabs still mean no
+        // visible tab reports a partial load.
+        for (int i : new int[]{0, 2, 3, 4}) {
+            assertFalse(stash.getPane(i).isIncomplete(), "pane " + i + " should have loaded completely");
+        }
+        assertEquals(5, stash.getVisibleTabCount());
+        assertFalse(stash.hasVisibleIncompletePane());
+        assertEquals(265, stash.getItemList().size());
     }
 }
