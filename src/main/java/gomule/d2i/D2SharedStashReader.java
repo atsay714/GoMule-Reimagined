@@ -18,8 +18,11 @@ public class D2SharedStashReader {
     }
 
     public D2SharedStash readStash(String filename, D2BitReader bitReader) throws Exception {
+        // No cap on the pane count: retail D2R has 3 (classic) or 7 (Reimagined DLC: 5 normal + 2
+        // converted) panes, but the D2RLoader plugin adds up to 995 more ordinary tabs -- a real
+        // file has 57 (5 normal, the DLC gem/rune tab, 50 loader tabs, then the DLC materials tab).
+        // Every pane is found by its marker and parsed independently below, so just walk them all.
         int[] stashHeaderOffsets = bitReader.findBytes(STASH_HEADER_START);
-        if (stashHeaderOffsets.length > 7) throw new RuntimeException("Stash unsupported");
         byte[] fileContent = bitReader.getFileContent();
         List<D2SharedStashPane> result = new ArrayList<>();
         for (int paneIndex = 0; paneIndex < stashHeaderOffsets.length; paneIndex++) {
@@ -35,13 +38,18 @@ public class D2SharedStashReader {
             // or item count turns out to be garbage.
             int paneEnd = (paneIndex + 1 < stashHeaderOffsets.length) ? stashHeaderOffsets[paneIndex + 1] : fileContent.length;
             byte[] originalBytes = Arrays.copyOfRange(fileContent, paneStart, paneEnd);
+            // Header byte 20 is the tab's type: 0 for an ordinary tab, 1 for the DLC's stackable
+            // gem/rune tab, 2 for its materials tab (confirmed across every fixture and the 57-pane
+            // D2RLoader file). Read straight from the raw bytes so it's known even for a pane whose
+            // contents fail to parse; D2SharedStash uses it to decide which panes are shown as tabs.
+            int tabType = originalBytes.length > 20 ? originalBytes[20] & 0xFF : 0;
             bitReader.set_byte_pos(paneStart);
             try {
-                result.add(readSharedStashPane(bitReader, filename, originalBytes));
+                result.add(readSharedStashPane(bitReader, filename, originalBytes).withTabType(tabType));
             } catch (Exception pEx) {
                 result.add(D2SharedStashPane.fromItemsPartial(new ArrayList<>(), 0,
                         "Pane " + (paneIndex + 1) + " of " + stashHeaderOffsets.length + " failed to parse: " + pEx,
-                        originalBytes));
+                        originalBytes).withTabType(tabType));
             }
         }
         return new D2SharedStash(filename, result, fileContent);

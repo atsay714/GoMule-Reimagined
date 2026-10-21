@@ -9,6 +9,7 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
+import java.util.List;
 
 import static java.util.Collections.emptyList;
 
@@ -24,9 +25,17 @@ public class SharedStashPanel extends JPanel {
     private static final int TAB_BAND_BOTTOM = 75;  // exclusive; bottom of that band
     // A column of empty recessed frame just right of the tab strip, used as the "no tab" texture.
     private static final int RECESS_SAMPLE_X = 503;
+    // The baked strip has 7 tab slots. With more visible tabs (a D2RLoader stash can have up to
+    // 1000) the strip shows one page of 7 at a time, with the tab numbers painted over the
+    // "Shared" labels; D2ViewSharedStash's tab selector bar pages through and jumps between them.
+    public static final int TABS_PER_PAGE = TAB_X_BOUNDS.length - 1;
+    private static final int TAB_LABEL_TOP = 55;    // inclusive; band holding the "Shared" label
+    private static final int TAB_LABEL_BOTTOM = 68; // exclusive
     private final D2FileManager fileManager;
     private final D2ViewSharedStash sharedStashView;
-    private int selectedStashPaneIndex = 0;
+    // Position among the *visible* tabs (see D2SharedStash.getVisiblePaneIndices()), not a pane
+    // index: the DLC's hidden converted tabs can sit between visible ones.
+    private int selectedTab = 0;
     private Image background;
 
     public SharedStashPanel(D2FileManager fileManager, D2ViewSharedStash sharedStashView) {
@@ -45,39 +54,50 @@ public class SharedStashPanel extends JPanel {
     }
 
     public void build() {
-        // A hidden tab must never stay selected -- e.g. if the previously selected index is no
-        // longer visible. Fall back to the first (always-visible) tab.
-        if (getSharedStash() != null && selectedStashPaneIndex >= getVisibleTabCount()) {
-            selectedStashPaneIndex = 0;
+        // A tab that no longer exists must never stay selected -- e.g. after reconnecting to a
+        // stash with fewer tabs. Fall back to the first (always-visible) tab.
+        if (getSharedStash() != null && selectedTab >= getVisibleTabCount()) {
+            selectedTab = 0;
         }
-        Image lEmptyBackground = D2ImageCache.getImage("stash" + (selectedStashPaneIndex + 1) + ".png");
+        Image lEmptyBackground = D2ImageCache.getImage("stash" + (selectedTab % TABS_PER_PAGE + 1) + ".png");
         background = fileManager.getGraphicsConfiguration().createCompatibleImage(BG_WIDTH, BG_HEIGHT, Transparency.BITMASK);
         Graphics2D lGraphics = (Graphics2D) background.getGraphics();
         lGraphics.drawImage(lEmptyBackground, 0, 0, this);
         if (getSharedStash() != null) {
             maskHiddenTabs();
+            labelTabsWithNumbers();
             placeItemsInView();
         }
         repaint();
     }
 
     // How many tabs to show -- the model hides the DLC's converted "stackable stash" tabs (see
-    // D2SharedStash.getVisibleTabCount()). Returns 0 only when there's no stash connected.
+    // D2SharedStash.getVisiblePaneIndices()). Returns 0 only when there's no stash connected.
     public int getVisibleTabCount() {
         D2SharedStash sharedStash = getSharedStash();
         return sharedStash == null ? 0 : sharedStash.getVisibleTabCount();
     }
 
-    // Each stashN.png bakes in all 7 "Shared" tab buttons, so the hidden ones are painted over
-    // with the empty recessed-frame texture sampled from just right of the strip -- making it look
-    // like the stash natively has only the visible number of tabs. Purely cosmetic; no item or
-    // pane data is touched.
+    // First visible tab shown in the strip's current page of TABS_PER_PAGE.
+    public int getPageStart() {
+        return selectedTab - selectedTab % TABS_PER_PAGE;
+    }
+
+    // Number of tabs in the strip's current page -- TABS_PER_PAGE except on a short last page.
+    public int getTabsOnPage() {
+        return Math.min(TABS_PER_PAGE, getVisibleTabCount() - getPageStart());
+    }
+
+    // Each stashN.png bakes in all 7 "Shared" tab buttons, so the unused ones (past the visible tab
+    // count, or past the end of a short last page) are painted over with the empty recessed-frame
+    // texture sampled from just right of the strip -- making it look like the stash natively has
+    // only that many tabs. Purely cosmetic; no item or pane data is touched.
     private void maskHiddenTabs() {
-        int visibleTabs = getVisibleTabCount();
-        if (visibleTabs >= TAB_X_BOUNDS.length - 1) return; // all 7 shown -> nothing to hide
+        int tabsOnPage = getTabsOnPage();
+        if (tabsOnPage >= TABS_PER_PAGE) return; // all 7 slots used -> nothing to hide
         if (!(background instanceof BufferedImage)) return;
         BufferedImage image = (BufferedImage) background;
-        int xStart = TAB_X_BOUNDS[visibleTabs];
+        int xStart = TAB_X_BOUNDS[tabsOnPage];
         int xEnd = TAB_X_BOUNDS[TAB_X_BOUNDS.length - 1];
         for (int y = TAB_BAND_TOP; y < TAB_BAND_BOTTOM; y++) {
             int recessColor = image.getRGB(RECESS_SAMPLE_X, y);
@@ -85,6 +105,35 @@ public class SharedStashPanel extends JPanel {
                 image.setRGB(x, y, recessColor);
             }
         }
+    }
+
+    // With more tabs than fit in the strip, every slot says "Shared", so paint the tab's number over
+    // that label: the label band is filled with the tab's own background colour (sampled per row
+    // from just inside its left edge) and the 1-based tab number drawn centred on top. Left alone
+    // for 7 or fewer tabs, where the strip already looks exactly like the game's.
+    private void labelTabsWithNumbers() {
+        if (getVisibleTabCount() <= TABS_PER_PAGE) return;
+        if (!(background instanceof BufferedImage)) return;
+        BufferedImage image = (BufferedImage) background;
+        Graphics2D g = image.createGraphics();
+        g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+        g.setFont(g.getFont().deriveFont(Font.BOLD, 11f));
+        FontMetrics metrics = g.getFontMetrics();
+        int pageStart = getPageStart();
+        for (int slot = 0; slot < getTabsOnPage(); slot++) {
+            int xStart = TAB_X_BOUNDS[slot] + 4;
+            int xEnd = TAB_X_BOUNDS[slot + 1] - 6;
+            for (int y = TAB_LABEL_TOP; y < TAB_LABEL_BOTTOM; y++) {
+                int fill = image.getRGB(xStart, y);
+                for (int x = xStart + 1; x < xEnd; x++) image.setRGB(x, y, fill);
+            }
+            String label = Integer.toString(pageStart + slot + 1);
+            int textX = (xStart + xEnd - metrics.stringWidth(label)) / 2;
+            int textY = (TAB_LABEL_TOP + TAB_LABEL_BOTTOM + metrics.getAscent() - metrics.getDescent()) / 2;
+            g.setColor(pageStart + slot == selectedTab ? new Color(235, 225, 190) : new Color(170, 155, 110));
+            g.drawString(label, textX, textY);
+        }
+        g.dispose();
     }
 
     private void placeItemsInView() {
@@ -144,7 +193,7 @@ public class SharedStashPanel extends JPanel {
         D2SharedStash sharedStash = getSharedStash();
         if (sharedStash == null) return emptyList();
         D2SharedStash.D2SharedStashPane stashPane = getSelectedStashPane();
-        sharedStash.replacePane(selectedStashPaneIndex, D2SharedStash.D2SharedStashPane.fromItems(emptyList(), stashPane.getGold()));
+        sharedStash.replacePane(getSelectedStashPaneIndex(), D2SharedStash.D2SharedStashPane.fromItems(emptyList(), stashPane.getGold()));
         sharedStash.setModified(true);
         return stashPane.getItems();
     }
@@ -157,25 +206,37 @@ public class SharedStashPanel extends JPanel {
         for (D2Item item : items) {
             stashPane = getD2SharedStashPane(stashPane, successfullyAddedItems, item);
         }
-        sharedStash.replacePane(selectedStashPaneIndex, stashPane);
+        sharedStash.replacePane(getSelectedStashPaneIndex(), stashPane);
         sharedStash.setModified(true);
         return successfullyAddedItems;
     }
 
     public D2SharedStash.D2SharedStashPane getSelectedStashPane() {
-        return getSharedStash().getPane(selectedStashPaneIndex);
+        return getSharedStash().getPane(getSelectedStashPaneIndex());
     }
 
     public D2SharedStash getSharedStash() {
         return sharedStashView.getSharedStash();
     }
 
+    // The selected tab's index into D2SharedStash.getPanes() (what replacePane() takes).
     public int getSelectedStashPaneIndex() {
-        return selectedStashPaneIndex;
+        List<Integer> visiblePanes = getSharedStash().getVisiblePaneIndices();
+        return visiblePanes.get(Math.min(selectedTab, visiblePanes.size() - 1));
     }
 
-    public void setSelectedStashPaneIndex(int selectedStashPaneIndex) {
-        this.selectedStashPaneIndex = selectedStashPaneIndex;
+    public int getSelectedTab() {
+        return selectedTab;
+    }
+
+    // Selects a visible tab (clamped to the valid range), redraws, and lets the view's tab selector
+    // bar follow along.
+    public void selectTab(int tab) {
+        int clamped = Math.max(0, Math.min(tab, getVisibleTabCount() - 1));
+        if (clamped == selectedTab) return;
+        selectedTab = clamped;
+        build();
+        sharedStashView.refreshTabSelector();
     }
 
     private D2SharedStash.D2SharedStashPane getD2SharedStashPane(D2SharedStash.D2SharedStashPane stashPane, java.util.List<D2Item> successfullyAddedItems, D2Item item) {

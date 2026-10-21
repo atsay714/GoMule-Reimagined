@@ -94,16 +94,19 @@ class SharedStashPanelMouseClickHandler extends MouseAdapter {
 
     private void setStashTab(Integer possibleStashTabClick) {
         if (possibleStashTabClick == null) return;
-        if (sharedStashPanel.getSelectedStashPaneIndex() == possibleStashTabClick) return;
-        sharedStashPanel.setSelectedStashPaneIndex(possibleStashTabClick);
-        sharedStashPanel.build();
+        sharedStashPanel.selectTab(possibleStashTabClick);
     }
 
+    // Returns the clicked visible tab (see SharedStashPanel.selectTab()), or null. The strip shows
+    // one page of 7 slots (SharedStashPanel.getPageStart()); only the slots used on that page are
+    // clickable -- the masked-off ones (hidden DLC tabs, a short last page) return null.
     private Integer getPossibleStashTabClick(int x, int y) {
-        // Visible (not total) tab count: the DLC's converted "stackable stash" tabs are hidden and
-        // must not be selectable -- clicking their now-empty area returns null. See
-        // SharedStashPanel.getVisibleTabCount() / D2SharedStash.getVisibleTabCount().
-        int visibleTabs = this.sharedStashPanel.getVisibleTabCount();
+        Integer slot = getPossibleStashTabSlotClick(x, y);
+        return slot == null ? null : sharedStashPanel.getPageStart() + slot;
+    }
+
+    private Integer getPossibleStashTabSlotClick(int x, int y) {
+        int visibleTabs = this.sharedStashPanel.getTabsOnPage();
 
         if (x >= 27 && x <= 462 && y >= 51 && y <= 72) {
             if ((x <= 87) && (visibleTabs >= 1)) return 0;

@@ -30,38 +30,41 @@ public class D2SharedStash extends D2ItemListAdapter {
         return panes;
     }
 
-    // How many tabs the UI should show. The Reimagined DLC converted its trailing "stackable
-    // stash" tabs to a storage format GoMule can't decode, so they load as incomplete panes (see
-    // D2SharedStashReader). Those are hidden from the tab strip -- but they stay in `panes` and are
-    // written back byte-for-byte on save (see saveInternal()), so this only affects display, never
-    // the file. Only a *trailing* run of incomplete panes is hidden: the tab strip is positional,
-    // so hiding a middle tab would leave a gap, and in every real file these converted tabs are the
-    // last ones. At least one tab always stays visible, even in the degenerate all-incomplete case.
-    public int getVisibleTabCount() {
-        int count = panes.size();
-        while (count > 1 && panes.get(count - 1).isIncomplete()) {
-            count--;
+    // Which panes the UI shows as tabs, in order. The Reimagined DLC converted two of its tabs (the
+    // stackable gem/rune tab and the materials tab -- header tab type 1 and 2, see
+    // D2SharedStashReader) to a storage format GoMule doesn't model, so they load as incomplete
+    // panes and are hidden here -- but they stay in `panes` and are written back byte-for-byte on
+    // save (see saveInternal()), so this only affects display, never the file. They used to be
+    // the last two panes, but a D2RLoader stash inserts its extra tabs between them, so visible
+    // tabs are a list of pane indices rather than a prefix count. At least one tab always stays
+    // visible, even in the degenerate all-hidden case.
+    public List<Integer> getVisiblePaneIndices() {
+        List<Integer> visible = new ArrayList<>();
+        for (int i = 0; i < panes.size(); i++) {
+            if (!panes.get(i).isConvertedTab()) visible.add(i);
         }
-        return count;
+        if (visible.isEmpty() && !panes.isEmpty()) visible.add(0);
+        return visible;
+    }
+
+    public int getVisibleTabCount() {
+        return getVisiblePaneIndices().size();
     }
 
     // True only when a *visible* tab failed to load -- a genuine partial-load problem worth warning
-    // the user about. The DLC's converted "stackable stash" tabs are incomplete by nature but
-    // hidden (see getVisibleTabCount()), so they must NOT trigger the warning. isItemsIncomplete()
-    // remains the raw-data truth (any pane incomplete) for callers like the reader tests and save
-    // path that need it.
+    // the user about. The DLC's converted tabs are incomplete by nature but hidden (see
+    // getVisiblePaneIndices()), so they must NOT trigger the warning. isItemsIncomplete() remains
+    // the raw-data truth (any pane incomplete) for callers like the reader tests and save path
+    // that need it.
     public boolean hasVisibleIncompletePane() {
-        int visible = getVisibleTabCount();
-        for (int i = 0; i < visible; i++) {
-            if (panes.get(i).isIncomplete()) return true;
-        }
-        return false;
+        return getVisiblePaneIndices().stream().anyMatch(i -> panes.get(i).isIncomplete());
     }
 
     // The reasons behind hasVisibleIncompletePane(), for the tooltip -- only the visible failures,
     // excluding the expected/hidden converted tabs that getItemsIncompleteReason() would include.
     public String getVisibleIncompleteReason() {
-        return panes.subList(0, getVisibleTabCount()).stream()
+        return getVisiblePaneIndices().stream()
+                .map(panes::get)
                 .filter(D2SharedStashPane::isIncomplete)
                 .map(D2SharedStashPane::getIncompleteReason)
                 .collect(Collectors.joining("; "));
@@ -170,13 +173,35 @@ public class D2SharedStash extends D2ItemListAdapter {
         private final int gold;
         private final String incompleteReason;
         private final byte[] originalBytes;
+        // The pane header's tab type byte (see D2SharedStashReader): 0 for an ordinary tab, non-zero
+        // for the DLC's converted stackable gem/rune (1) and materials (2) tabs.
+        private final int tabType;
 
         D2SharedStashPane(List<D2Item> items, D2Item[][] paneGrid, int gold, String incompleteReason, byte[] originalBytes) {
+            this(items, paneGrid, gold, incompleteReason, originalBytes, 0);
+        }
+
+        D2SharedStashPane(List<D2Item> items, D2Item[][] paneGrid, int gold, String incompleteReason, byte[] originalBytes, int tabType) {
             this.items = items;
             this.paneGrid = paneGrid;
             this.gold = gold;
             this.incompleteReason = incompleteReason;
             this.originalBytes = originalBytes;
+            this.tabType = tabType;
+        }
+
+        public D2SharedStashPane withTabType(int tabType) {
+            return new D2SharedStashPane(items, paneGrid, gold, incompleteReason, originalBytes, tabType);
+        }
+
+        public int getTabType() {
+            return tabType;
+        }
+
+        // One of the DLC's converted tabs, hidden from the tab strip (see
+        // D2SharedStash.getVisiblePaneIndices()).
+        public boolean isConvertedTab() {
+            return tabType != 0;
         }
 
         public static D2SharedStashPane fromItems(List<D2Item> items, int gold) {
@@ -314,13 +339,13 @@ public class D2SharedStash extends D2ItemListAdapter {
             // this edit (see fromItemsPartial()'s comment) -- there's no real, supported way to
             // add an item to one of these in the current UI, but if it ever happens, saving
             // silently keeping the pane unchanged is the safe outcome, not corrupting it.
-            return new D2SharedStashPane(items, constructPaneGrid(items), gold, incompleteReason, originalBytes);
+            return new D2SharedStashPane(items, constructPaneGrid(items), gold, incompleteReason, originalBytes, tabType);
         }
 
         public D2SharedStashPane removeItem(D2Item item) {
             List<D2Item> items = new ArrayList<>(this.items);
             items.remove(item);
-            return new D2SharedStashPane(items, constructPaneGrid(items), gold, incompleteReason, originalBytes);
+            return new D2SharedStashPane(items, constructPaneGrid(items), gold, incompleteReason, originalBytes, tabType);
         }
     }
 

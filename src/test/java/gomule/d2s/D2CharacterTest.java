@@ -865,4 +865,25 @@ public class D2CharacterTest {
         assertEquals("tsc", items.get(lastIdentifyScrollIdx + 1).getItem_type(),
                 "the belt's scroll run continues correctly after the last Scroll of Identify");
     }
+
+    // A save written with the D2RLoader plugin installed: D2RLoader sets the legacy "has GUID" bit
+    // on every item and follows it with a 128-bit GUID. The old parser only read those 128 bits for
+    // runes/gems/jewellery/charms/non-misc items and 3 bits for everything else, so the very first
+    // item -- a Reimagined rune stack, which isn't iType "rune" -- desynced and nothing loaded.
+    @Test
+    public void d2rLoaderPaladinWithPerItemGuidsLoadsFully() throws Exception {
+        D2TxtFile.constructTxtFiles("./d2111");
+        D2Character d2Character = new D2Character(
+                new File(Resources.getResource("charFiles/pally12.d2s").toURI()).getAbsolutePath());
+
+        assertEquals("pally", d2Character.getCharName());
+        assertFalse(d2Character.isItemsIncomplete(), d2Character.getItemsIncompleteReason());
+
+        List<D2Item> items = d2Character.getItemList();
+        assertEquals(156, items.size());
+        // Every item carries a GUID -- including the rune stack the load used to die on.
+        assertTrue(items.stream().allMatch(i -> i.getiGUID() != null), "every D2RLoader item has a GUID");
+        assertTrue(items.get(0).getItemName().contains("Ort Rune"), items.get(0).getItemName());
+        assertTrue(items.stream().noneMatch(i -> i.getItemName() != null && i.getItemName().contains("Ear")));
+    }
 }

@@ -9,12 +9,20 @@ import gomule.gui.D2ItemListListener;
 import javax.swing.*;
 import javax.swing.event.InternalFrameAdapter;
 import javax.swing.event.InternalFrameEvent;
+import java.awt.*;
 import java.io.File;
+import java.util.List;
 
 public class D2ViewSharedStash extends JInternalFrame implements D2ItemContainer, D2ItemListListener {
     private final D2FileManager fileManager;
     private final String sharedStashFilename;
     private final SharedStashPanel sharedStashPanel;
+    // Only shown when the stash has more visible tabs than the 7-slot strip can hold (a D2RLoader
+    // stash -- see SharedStashPanel.TABS_PER_PAGE): pages the strip back/forward by 7 and jumps
+    // straight to any tab, with each tab's item count so the occupied ones are easy to find.
+    private final JPanel tabSelectorBar;
+    private final JComboBox<String> tabSelector;
+    private boolean updatingTabSelector;
     private D2SharedStash sharedStash;
 
     public D2ViewSharedStash(D2FileManager fileManager, String sharedStashFilename) {
@@ -30,7 +38,26 @@ public class D2ViewSharedStash extends JInternalFrame implements D2ItemContainer
         ToolTipManager.sharedInstance().setDismissDelay(40000);
         ToolTipManager.sharedInstance().setInitialDelay(300);
         sharedStashPanel = new SharedStashPanel(fileManager, this);
-        setContentPane(sharedStashPanel);
+        tabSelector = new JComboBox<>();
+        tabSelector.setMaximumRowCount(20);
+        tabSelector.addActionListener(e -> {
+            if (!updatingTabSelector && tabSelector.getSelectedIndex() >= 0) {
+                sharedStashPanel.selectTab(tabSelector.getSelectedIndex());
+            }
+        });
+        JButton previousPage = new JButton("\u25C0 Prev 7");
+        previousPage.addActionListener(e -> sharedStashPanel.selectTab(sharedStashPanel.getPageStart() - SharedStashPanel.TABS_PER_PAGE));
+        JButton nextPage = new JButton("Next 7 \u25B6");
+        nextPage.addActionListener(e -> sharedStashPanel.selectTab(sharedStashPanel.getPageStart() + SharedStashPanel.TABS_PER_PAGE));
+        tabSelectorBar = new JPanel(new FlowLayout(FlowLayout.CENTER, 6, 2));
+        tabSelectorBar.add(previousPage);
+        tabSelectorBar.add(tabSelector);
+        tabSelectorBar.add(nextPage);
+        tabSelectorBar.setVisible(false);
+        JPanel content = new JPanel(new BorderLayout());
+        content.add(tabSelectorBar, BorderLayout.NORTH);
+        content.add(sharedStashPanel, BorderLayout.CENTER);
+        setContentPane(content);
         connect();
         setVisible(true);
         pack();
@@ -126,6 +153,35 @@ public class D2ViewSharedStash extends JInternalFrame implements D2ItemContainer
         }
         setTitle(lTitle);
         sharedStashPanel.build();
+        refreshTabSelector();
+    }
+
+    // Rebuilds the tab selector bar from the current stash (tab list, item counts, selection) and
+    // shows it only when there are more tabs than the strip holds. Called after any item change and
+    // whenever SharedStashPanel.selectTab() changes the selected tab.
+    public void refreshTabSelector() {
+        if (tabSelectorBar == null || sharedStashPanel == null) return; // still constructing
+        boolean show = sharedStash != null && sharedStash.getVisibleTabCount() > SharedStashPanel.TABS_PER_PAGE;
+        if (show) {
+            updatingTabSelector = true;
+            try {
+                DefaultComboBoxModel<String> model = new DefaultComboBoxModel<>();
+                List<Integer> visiblePanes = sharedStash.getVisiblePaneIndices();
+                for (int tab = 0; tab < visiblePanes.size(); tab++) {
+                    int itemCount = sharedStash.getPane(visiblePanes.get(tab)).getItems().size();
+                    model.addElement("Tab " + (tab + 1) + " of " + visiblePanes.size()
+                            + (itemCount == 0 ? " (empty)" : " (" + itemCount + (itemCount == 1 ? " item)" : " items)")));
+                }
+                tabSelector.setModel(model);
+                tabSelector.setSelectedIndex(sharedStashPanel.getSelectedTab());
+            } finally {
+                updatingTabSelector = false;
+            }
+        }
+        if (tabSelectorBar.isVisible() != show) {
+            tabSelectorBar.setVisible(show);
+            pack();
+        }
     }
 
     public String getSharedStashName() {

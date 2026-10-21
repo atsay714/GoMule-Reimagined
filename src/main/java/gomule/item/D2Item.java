@@ -415,7 +415,12 @@ public class D2Item implements Comparable, D2ItemInterface {
         long lHasGUID = pFile.read(1);
 
         if (lHasGUID == 1) { // GUID ???
-            if (iType.startsWith("rune") || iType.startsWith("gem")
+            // Retail D2R always writes this bit as 0, but the D2RLoader plugin stamps every item
+            // with a 128-bit GUID here -- jewels, potions and other misc items included, which
+            // the legacy 3-bit branch below desynced on. Confirmed by diffing a real stash before
+            // and after installing D2RLoader: every item (a jewel, a rune, set and unique gear)
+            // gained exactly this bit set plus 128 random-looking bits at this spot, nothing else.
+            if (usesPostV99ItemFormat() || iType.startsWith("rune") || iType.startsWith("gem")
                     || iType.startsWith("amu") || iType.startsWith("rin")
                     || isCharm() || !isTypeMisc()) {
 

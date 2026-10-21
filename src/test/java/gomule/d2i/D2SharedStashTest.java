@@ -16,37 +16,47 @@ import static org.junit.jupiter.api.Assertions.*;
 
 public class D2SharedStashTest {
 
-    // getVisibleTabCount() drives how many stash tabs the UI shows. The Reimagined DLC converted
-    // its last "stackable stash" tabs to a storage format GoMule can't decode, so they load as
-    // trailing incomplete panes (see D2SharedStashReader). The UI hides exactly those -- the panes
-    // stay in the model and are saved back byte-for-byte, they're just not shown as item tabs.
+    // getVisiblePaneIndices() drives which stash tabs the UI shows. The Reimagined DLC converted
+    // two tabs (header tab type 1 = stackable gem/rune, 2 = materials) to a storage format GoMule
+    // can't model, so they load as incomplete panes (see D2SharedStashReader). The UI hides exactly
+    // those -- the panes stay in the model and are saved back byte-for-byte, they're just not shown
+    // as item tabs.
 
     @Test
-    public void visibleTabCountHidesTrailingIncompletePanes() {
-        // DLC/Modern shape: 5 normal panes + the 2 converted (incomplete) tabs -> 5 shown.
-        D2SharedStash stash = stashWith(complete(), complete(), complete(), complete(), complete(), incomplete(), incomplete());
+    public void visibleTabsHideTheConvertedDlcTabs() {
+        // DLC/Modern shape: 5 normal panes + the 2 converted tabs -> 5 shown.
+        D2SharedStash stash = stashWith(complete(), complete(), complete(), complete(), complete(), converted(1), converted(2));
         assertEquals(7, stash.getPanes().size());
         assertEquals(5, stash.getVisibleTabCount());
+        assertEquals(Arrays.asList(0, 1, 2, 3, 4), stash.getVisiblePaneIndices());
     }
 
     @Test
-    public void visibleTabCountShowsAllWhenNothingIncomplete() {
+    public void visibleTabsShowAllWhenNothingIsConverted() {
         // Non-DLC (3 normal panes) and ordinary all-good stashes are completely untouched.
         assertEquals(3, stashWith(complete(), complete(), complete()).getVisibleTabCount());
         assertEquals(7, stashWith(complete(), complete(), complete(), complete(), complete(), complete(), complete()).getVisibleTabCount());
     }
 
     @Test
-    public void visibleTabCountOnlyHidesTrailingRunNotMiddleIncompletePanes() {
-        // The tab strip is positional, so a hidden middle tab would leave a gap; real converted
-        // tabs are always trailing. A non-trailing incomplete pane therefore stays visible.
-        D2SharedStash stash = stashWith(complete(), incomplete(), complete(), incomplete(), incomplete());
+    public void visibleTabsSkipAConvertedTabInTheMiddle() {
+        // D2RLoader shape: its extra tabs are inserted between the DLC's two converted tabs, so the
+        // gem/rune tab sits in the middle. The tabs either side of it map straight past it.
+        D2SharedStash stash = stashWith(complete(), complete(), converted(1), complete(), complete(), converted(2));
+        assertEquals(Arrays.asList(0, 1, 3, 4), stash.getVisiblePaneIndices());
+    }
+
+    @Test
+    public void anOrdinaryTabThatFailedToLoadStaysVisible() {
+        // Only the converted tabs are hidden -- a normal tab that failed to parse still shows (with
+        // whatever was read before the failure) so the partial-load warning has something to point at.
+        D2SharedStash stash = stashWith(complete(), incompleteBecause("Item 3 of 12 failed to parse"), complete());
         assertEquals(3, stash.getVisibleTabCount());
     }
 
     @Test
-    public void visibleTabCountNeverHidesEveryTab() {
-        assertEquals(1, stashWith(incomplete(), incomplete()).getVisibleTabCount());
+    public void visibleTabsNeverHideEveryTab() {
+        assertEquals(1, stashWith(converted(1), converted(2)).getVisibleTabCount());
     }
 
     // The "[LOADED PARTIALLY]" warning should fire only for a *visible* tab that failed to load --
@@ -55,7 +65,7 @@ public class D2SharedStashTest {
 
     @Test
     public void noVisibleIncompleteWhenOnlyConvertedTabsAreIncomplete() {
-        D2SharedStash stash = stashWith(complete(), complete(), complete(), complete(), complete(), incomplete(), incomplete());
+        D2SharedStash stash = stashWith(complete(), complete(), complete(), complete(), complete(), converted(1), converted(2));
         assertTrue(stash.isItemsIncomplete());          // raw truth: the file does have incomplete panes
         assertFalse(stash.hasVisibleIncompletePane());  // but nothing the user sees is broken
         assertEquals("", stash.getVisibleIncompleteReason());
@@ -63,7 +73,7 @@ public class D2SharedStashTest {
 
     @Test
     public void visibleIncompleteWhenANormalTabFailsToLoad() {
-        D2SharedStash stash = stashWith(complete(), incompleteBecause("Item 3 of 12 failed to parse"), complete(), incomplete(), incomplete());
+        D2SharedStash stash = stashWith(complete(), incompleteBecause("Item 3 of 12 failed to parse"), complete(), converted(1), converted(2));
         assertTrue(stash.hasVisibleIncompletePane());
         // Only the visible failure is reported -- the hidden converted tabs are excluded.
         assertEquals("Item 3 of 12 failed to parse", stash.getVisibleIncompleteReason());
@@ -78,8 +88,8 @@ public class D2SharedStashTest {
         return D2SharedStashPane.fromItems(Collections.emptyList(), 0);
     }
 
-    private static D2SharedStashPane incomplete() {
-        return incompleteBecause("converted stackable tab");
+    private static D2SharedStashPane converted(int tabType) {
+        return incompleteBecause("converted stackable tab").withTabType(tabType);
     }
 
     private static D2SharedStashPane incompleteBecause(String reason) {

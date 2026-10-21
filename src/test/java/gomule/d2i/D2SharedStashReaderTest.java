@@ -457,4 +457,53 @@ public class D2SharedStashReaderTest {
         assertFalse(stash.hasVisibleIncompletePane());
         assertEquals(265, stash.getItemList().size());
     }
+
+    // A stash saved with the D2RLoader plugin, which lifts the shared stash from 7 panes to up to
+    // 1000. This one has 57: the 5 original tabs, the DLC's stackable gem/rune tab (tab type 1), 50
+    // extra D2RLoader tabs, and finally the DLC materials tab (tab type 2) -- the loader inserts its
+    // tabs between the two converted ones. It used to be rejected outright ("Stash unsupported",
+    // more than 7 panes). It also exercises D2RLoader's per-item 128-bit GUID (see the "has GUID"
+    // branch in D2Item.readExtend()): every one of its items carries one, and without reading
+    // those for jewels/potions/other misc items 4 of the 5 real tabs failed partway through.
+    @Test
+    public void d2rLoaderStashWithFiftySevenPanesLoadsEveryTabAndSavesUnchanged() throws Exception {
+        D2TxtFile.constructTxtFiles("./d2111");
+        byte[] originalBytes = Resources.toByteArray(Resources.getResource("sharedStash/LoaderSharedStashSoftCoreV2.d2i"));
+        java.io.File tempFile = java.io.File.createTempFile("LoaderSharedStashSoftCoreV2", ".d2i");
+        tempFile.deleteOnExit();
+        java.nio.file.Files.write(tempFile.toPath(), originalBytes);
+
+        D2SharedStash stash = new D2SharedStashReader().readStash(tempFile.getAbsolutePath());
+
+        assertEquals(57, stash.getPanes().size());
+        assertEquals(1, stash.getPane(5).getTabType());
+        assertEquals(2, stash.getPane(56).getTabType());
+        // The two converted DLC tabs are hidden wherever they sit; the 55 ordinary tabs are shown.
+        assertEquals(55, stash.getVisibleTabCount());
+        List<Integer> visible = stash.getVisiblePaneIndices();
+        assertEquals(java.util.Arrays.asList(0, 1, 2, 3, 4, 6), visible.subList(0, 6));
+        assertEquals(55, (int) visible.get(54));
+        assertFalse(stash.hasVisibleIncompletePane(), stash.getVisibleIncompleteReason());
+
+        assertEquals(106, stash.getPane(0).getItems().size());
+        assertEquals(2500000, stash.getPane(0).getGold());
+        assertEquals(88, stash.getPane(1).getItems().size());
+        assertEquals(86, stash.getPane(2).getItems().size());
+        assertEquals(10, stash.getPane(3).getItems().size());
+        assertEquals(33, stash.getPane(4).getItems().size());
+        // The stackable gem/rune tab recovers all its items, same as before D2RLoader.
+        assertEquals(79, stash.getPane(5).getItems().size());
+        // The 50 D2RLoader tabs are all present, complete and (in this file) empty.
+        for (int i = 6; i <= 55; i++) {
+            assertFalse(stash.getPane(i).isIncomplete(), "pane " + i);
+            assertEquals(0, stash.getPane(i).getItems().size(), "pane " + i);
+        }
+        // Pane 2 opens with a run of jewels -- the misc items the legacy 3-bit GUID branch broke on.
+        assertTrue(stash.getPane(2).getItems().get(0).getItemName().startsWith("Jewel"));
+        assertTrue(stash.getItemList().stream().allMatch(it -> it.getiGUID() != null), "every item has a GUID");
+
+        stash.saveInternal(null);
+        assertArrayEquals(originalBytes, java.nio.file.Files.readAllBytes(tempFile.toPath()),
+                "an unmodified 57-pane stash saves back byte-for-byte");
+    }
 }
