@@ -420,6 +420,16 @@ public class D2Prop {
                 }
                 D2TxtFileItemProperties o = matchingPropsRecords.get(0);
                 String tooltip = o.get("*Tooltip");
+                // properties.txt's "*Tooltip" is only a comment column, and Reimagined doesn't keep
+                // it accurate: it's blank for the % attribute stats (str%/dex%/vit%/enr% -- Valknut's
+                // "+10% to Dexterity" rendered as nothing) and the Enchantments/Upgrades counters, and
+                // copy-pasted with the wrong element for pierce-mag ("Enemy Fire Resistance" on a
+                // Black Cleft's -% Enemy Magic Resistance), passive_dmg_pierce and the max-magic-damage
+                // stat. Use the stat's real localized string (descstrpos, what the game itself shows)
+                // in exactly those cases; everywhere else the tooltip's wording is kept as before.
+                if (oString != null && (tooltip.trim().isEmpty() || namesWrongElement(tooltip, oString))) {
+                    return D2ItemRenderer.stripColorCodes(formatTranslation(oString, pVals[0]));
+                }
                 String value = tooltip.replace("#", String.valueOf(pVals[0]));
                 if (pVals[0] < 0) {
                     return value.replace("+", "");
@@ -586,6 +596,25 @@ public class D2Prop {
         }
 
         return "";// "Unrecognized property: " + this.pNum;
+    }
+
+    private static final String[] ELEMENT_WORDS = {"Fire", "Cold", "Lightning", "Poison", "Magic", "Physical"};
+
+    // True if the tooltip names a damage element its stat's real string doesn't -- the signature of
+    // a row copy-pasted from a sibling element and never updated (see the descfunc 19 case).
+    private static boolean namesWrongElement(String tooltip, String translation) {
+        for (String element : ELEMENT_WORDS) {
+            if (tooltip.contains(element) && !translation.contains(element)) return true;
+        }
+        return false;
+    }
+
+    // Formats a game string's printf-style value placeholders: %+d (explicitly signed), %d, %%.
+    private static String formatTranslation(String translation, int value) {
+        return translation
+                .replace("%+d", (value >= 0 ? "+" : "") + value)
+                .replace("%d", Integer.toString(value))
+                .replace("%%", "%");
     }
 
     public void applyOp(int cLvl) {

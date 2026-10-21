@@ -506,4 +506,26 @@ public class D2SharedStashReaderTest {
         assertArrayEquals(originalBytes, java.nio.file.Files.readAllBytes(tempFile.toPath()),
                 "an unmodified 57-pane stash saves back byte-for-byte");
     }
+
+    // descfunc 19 stats render from properties.txt's "*Tooltip" comment column, which Reimagined
+    // leaves blank for the % attribute stats and copy-pastes with the wrong element for some
+    // pierce stats. Those fall back to the stat's real localized string (see D2Prop).
+    @Test
+    public void percentAttributesAndMagicPierceRenderTheirRealText() throws Exception {
+        D2TxtFile.constructTxtFiles("./d2111");
+        D2SharedStash stash = new D2SharedStashReader().readStash(
+                Resources.getResource("sharedStash/LoaderSharedStashSoftCoreV2.d2i").getFile());
+        List<String> dumps = stash.getItemList().stream()
+                .map(it -> D2ItemRenderer.itemDump(it, true).replace("\r", ""))
+                .collect(Collectors.toList());
+
+        // Valknut's dex%/enr% used to render as nothing at all.
+        String valknut = dumps.stream().filter(d -> d.contains("Valknut")).findFirst().orElseThrow();
+        assertTrue(valknut.contains("+10% to Dexterity"), valknut);
+        assertTrue(valknut.contains("+8% to Energy"), valknut);
+
+        // A Renewed Black Cleft's -% Enemy Magic Resistance used to say "Enemy Fire Resistance".
+        assertTrue(dumps.stream().anyMatch(d -> d.contains("Black Cleft") && d.contains("-6% to Enemy Magic Resistance")));
+        assertTrue(dumps.stream().noneMatch(d -> d.contains("Black Cleft") && d.contains("Enemy Fire Resistance")));
+    }
 }
